@@ -1,5 +1,6 @@
 import sqlite3
 import pandas as pd
+from pandas import Timestamp, Period
 from typing import Dict, Tuple
 import numpy as np
 from datetime import timedelta
@@ -167,6 +168,9 @@ def analyze_member_value(space_df: pd.DataFrame, db_path: str) -> Dict[str, pd.D
     }).reset_index()
     lifecycle.columns = ['会员号', '首次创建时间', '最后创建时间', '总实付金额', '订单数']
 
+    lifecycle['首次创建时间'] = lifecycle['首次创建时间'].astype(str)
+    lifecycle['最后创建时间'] = lifecycle['最后创建时间'].astype(str)
+
     payment = space_df.groupby('支付方式').agg({
         '实付金额': ['mean', 'sum'],
         '订单编号': 'count'
@@ -201,6 +205,9 @@ def analyze_users(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     customer_analysis.columns = ['订单数', '首次消费时间', '最后消费时间', '总消费金额']
     customer_analysis = customer_analysis.reset_index()
     
+    customer_analysis['首次消费时间'] = customer_analysis['首次消费时间'].astype(str)
+    customer_analysis['最后消费时间'] = customer_analysis['最后消费时间'].astype(str)
+
     customer_analysis['customer_tier'] = customer_analysis['订单数'].apply(categorize_customers)
     customer_analysis['消费间隔'] = (customer_analysis['最后消费时间'] - 
                                 customer_analysis['首次消费时间']).dt.days
@@ -281,8 +288,8 @@ def analyze_monthly_trends(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     monthly_analysis.columns = ['订单数', '总收入', '平均订单金额',
                               '活跃会员数', '总使用时长', '平均使用时长']
     monthly_analysis = monthly_analysis.reset_index()
-    monthly_analysis['月份'] = monthly_analysis['booking_month'].astype(str)
-    
+    monthly_analysis['月份'] = monthly_analysis['booking_month'].astype(str)  # 确保已经是字符串
+    monthly_analysis = monthly_analysis.drop(columns=['booking_month'])  # 删除 Period 列
     return {'6-月度趋势分析': monthly_analysis}
 
 def analyze_space_types(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
@@ -305,6 +312,8 @@ def analyze_space_types(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
         .reset_index(name='利用率')
     )
 
+    utilization_rates['booking_month'] = utilization_rates['booking_month'].astype(str)  # 转换为字符串
+
     # 分组并聚合基本指标
     space_type_analysis = space_df.groupby(['booking_month', '订单商品名']).agg({
         '订单编号': 'count', 
@@ -314,6 +323,7 @@ def analyze_space_types(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
 
     # 展平多级列名
     space_type_analysis.columns = ['月份', '空间类型', '订单数', '总收入', '平均订单金额', '总使用时长', '平均使用时长']
+    space_type_analysis['月份'] = space_type_analysis['月份'].astype(str)  # 确保是字符串
 
     # 合并利用率数据
     space_type_analysis = space_type_analysis.merge(
@@ -358,6 +368,22 @@ def convert_keys_to_str(data):
         return [convert_keys_to_str(item) for item in data]
     return data
     
+def convert_df_to_dict(data):
+    """将 DataFrame 或嵌套数据转换为字典，并处理 Timestamp 和 Period 类型"""
+    if isinstance(data, pd.DataFrame):
+        df = data.copy()
+        for col in df.columns:
+            if pd.api.types.is_datetime64_any_dtype(df[col]) or pd.api.types.is_period_dtype(df[col]):
+                df[col] = df[col].astype(str)
+        return df.to_dict(orient='records')
+    elif isinstance(data, dict):
+        return {k: convert_df_to_dict(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [convert_df_to_dict(item) for item in data]
+    elif isinstance(data, (Timestamp, Period)):
+        return str(data)
+    return data
+
 def analyze(conn):
     """
     分析 Space 表数据，返回结果字典。
@@ -401,14 +427,8 @@ def analyze(conn):
             'upgrade': upgrade_results,
             'monthly': monthly_results,
             'space_type': space_type_results
-        }
-
-        # 转换为可序列化格式
-        def convert_df_to_dict(data):
-            if isinstance(data, pd.DataFrame):
-                return data.to_dict(orient='records')
-            return data
-
+            }
+        
         processed_results = {}
         for category, data in all_results.items():
             processed_results[category] = {key: convert_df_to_dict(value) for key, value in data.items()}
