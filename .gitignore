@@ -1,0 +1,10 @@
+# 忽略所有名字带有 back 的文件夹
+*/backup*/
+*backup*/
+
+# 忽略所有 __pycache__ 文件夹
+__pycache__/
+
+db/
+
+*temp*
