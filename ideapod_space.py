@@ -153,24 +153,30 @@ def analyze_member_value(space_df: pd.DataFrame, db_path: str) -> Dict[str, pd.D
     result_df = pd.merge(result_df, reactivated_users_df, on='booking_month', how='left')
     result_df = pd.merge(result_df, new_users_df, on='booking_month', how='left')
     
+    member_level = space_df.groupby('等级').agg({
+        '实付金额': ['mean', 'sum'],
+        '订单编号': 'count',
+        '会员号': 'nunique'
+    }).reset_index()
+    member_level.columns = ['等级', '平均实付金额', '总实付金额', '订单数', '独立会员数']
+
+    lifecycle = space_df.groupby('会员号').agg({
+        '创建时间': ['min', 'max'],
+        '实付金额': 'sum',
+        '订单编号': 'count'
+    }).reset_index()
+    lifecycle.columns = ['会员号', '首次创建时间', '最后创建时间', '总实付金额', '订单数']
+
+    payment = space_df.groupby('支付方式').agg({
+        '实付金额': ['mean', 'sum'],
+        '订单编号': 'count'
+    }).reset_index()
+    payment.columns = ['支付方式', '平均实付金额', '总实付金额', '订单数']
+
     return {
-        '3-会员等级消费': space_df.groupby('等级').agg({
-            '实付金额': ['mean', 'sum'],
-            '订单编号': 'count',
-            '会员号': 'nunique'
-        }).reset_index(),
-        
-        '3-用户生命周期': space_df.groupby('会员号').agg({
-            '创建时间': ['min', 'max'],
-            '实付金额': 'sum',
-            '订单编号': 'count'
-        }).reset_index(),
-        
-        '3-支付方式影响': space_df.groupby('支付方式').agg({
-            '实付金额': ['mean', 'sum'],
-            '订单编号': 'count'
-        }).reset_index(),
-        
+        '3-会员等级消费': member_level,
+        '3-用户生命周期': lifecycle,
+        '3-支付方式影响': payment,
         '3-用户留存与流失': result_df
     }
 
@@ -344,6 +350,14 @@ def analyze_space_types(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
         '7-时段使用率分析': hourly_utilization  # 新增的时段使用率分析
     }
 
+def convert_keys_to_str(data):
+    """递归地将字典中的元组键转换为字符串"""
+    if isinstance(data, dict):
+        return {str(k) if isinstance(k, tuple) else k: convert_keys_to_str(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [convert_keys_to_str(item) for item in data]
+    return data
+    
 def analyze(conn):
     """
     分析 Space 表数据，返回结果字典。
@@ -398,6 +412,8 @@ def analyze(conn):
         processed_results = {}
         for category, data in all_results.items():
             processed_results[category] = {key: convert_df_to_dict(value) for key, value in data.items()}
+        
+        processed_results = convert_keys_to_str(processed_results)
 
         return processed_results
 

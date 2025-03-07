@@ -1,10 +1,7 @@
 import sqlite3
 from flask import Flask, render_template
 import json
-import ideapod_catering  # 导入餐饮分析脚本
-import ideapod_space     # 导入空间分析脚本
-import ideapod_fetch
-import meta              # 导入元数据分析脚本
+import meta  # 保留，因为 /meta 路由仍然需要
 
 app = Flask(__name__)
 
@@ -18,43 +15,39 @@ def get_db_connection():
 def home():
     return render_template('index.html')
 
-# 餐饮分析路由
+# 餐饮分析路由 - 从 JSON 文件读取
 @app.route('/catering')
 def catering():
-    with get_db_connection() as conn:
-        result = ideapod_catering.analyze(conn)
-    if 'error' in result:
-        return render_template('error.html', error=result['error'])
-    return render_template('catering.html', result=result)
+    try:
+        with open('static/catering_results.json', 'r', encoding='utf-8') as f:
+            result = json.load(f)
+        if 'error' in result:
+            return render_template('error.html', error=result['error'])
+        return render_template('catering.html', result=result)
+    except FileNotFoundError:
+        return render_template('error.html', error="餐饮分析数据文件未找到，请先运行预计算脚本")
 
-# 空间分析路由
+# 空间分析路由 - 从 JSON 文件读取
 @app.route('/space')
 def space():
-    with get_db_connection() as conn:
-        result = ideapod_space.analyze(conn)
-    if 'error' in result:
-        return render_template('error.html', error=result['error'])
-    return render_template('space.html', result=result)
+    try:
+        with open('static/space_results.json', 'r', encoding='utf-8') as f:
+            result = json.load(f)
+        if 'error' in result:
+            return render_template('space.html', error=result['error'])
+        return render_template('space.html', result=result)
+    except FileNotFoundError:
+        return render_template('error.html', error="空间分析数据文件未找到，请先运行预计算脚本")
 
 # 元数据分析路由
 @app.route('/meta')
 def meta():
     conn = get_db_connection()
-    meta.analyze(conn)  # 假设它生成 metadata_report.json
+    meta.analyze(conn)
     conn.close()
     with open('metadata_report.json', 'r') as f:
         result = json.load(f)
     return render_template('meta.html', result=result)
-
-# 目前暂时不需要，先放在这里
-# 更新数据路由
-@app.route('/update')
-def update():
-    conn = get_db_connection()
-    ideapod_fetch.clean_and_update(conn)  # 假设脚本更新数据库
-    conn.close()
-    return "数据已更新！<a href='/'>返回首页</a>"
-
 
 if __name__ == '__main__':
     app.run(debug=True)

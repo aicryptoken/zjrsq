@@ -1,42 +1,148 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 <head>
+    <meta charset="UTF-8">
     <title>Catering 分析</title>
     <style>
-        table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
-        th, td { border: 1px solid black; padding: 8px; text-align: left; }
-        th { background-color: #f2f2f2; }
-        h1, h2 { color: #333; }
+        /* 基础样式 */
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            color: #333;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        h2 {
+            color: #333;
+            margin-top: 0;
+        }
+        
+        /* 选项卡样式 */
+        .tab-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .tab-buttons {
+            overflow: hidden;
+            border-bottom: 2px solid #ccc;
+            margin-bottom: 20px;
+        }
+        .tab-buttons button {
+            background-color: #f2f2f2;
+            border: none;
+            outline: none;
+            cursor: pointer;
+            padding: 14px 20px;
+            float: left;
+            transition: 0.3s;
+            font-size: 16px;
+        }
+        .tab-buttons button:hover {
+            background-color: #ddd;
+        }
+        .tab-buttons button.active {
+            background-color: #ccc;
+            font-weight: bold;
+        }
+        
+        /* 内容样式 */
+        .tab-content {
+            display: none;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-top: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 20px;
+        }
+        th, td {
+            border: 1px solid black;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
     </style>
 </head>
 <body>
     <h1>Catering 分析</h1>
+    <div class="tab-container">
+        <!-- 动态生成选项卡按钮 -->
+        <div class="tab-buttons">
+            {% set first = true %}
+            {% for category in results.keys() %}
+                <button class="tab-button {% if first %}active{% endif %}" data-tab="{{ category|replace(' ', '_') }}">
+                    {{ category }}
+                </button>
+                
+                <script>
+                document.querySelectorAll('.tab-button').forEach(button => {
+                    button.addEventListener('click', function(event) {
+                        const tabName = this.getAttribute('data-tab');
+                        openTab(event, tabName);
+                    });
+                });
+                </script>
+                {% set first = false %}
+            {% endfor %}
+        </div>
 
-    {% for category, data in results.items() %}
-        <h2>{{ category }}</h2>
-        {% for key, value in data.items() %}
-            <h3>{{ key }}</h3>
-            <table>
-                <thead>
-                    <tr>
-                        {% if value %}
-                            {% for col in value[0].keys() %}
-                                <th>{{ col }}</th>
+        <!-- 动态生成选项卡内容 -->
+        {% set first = true %}
+        {% for category, data in results.items() %}
+            <div id="{{ category|replace(' ', '_')|e }}" class="tab-content {% if first %}active{% endif %}">
+                <h2>{{ category }}</h2>
+                {% for key, value in data.items() %}
+                    <h3>{{ key }}</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                {% if value %}
+                                    {% for col in value[0].keys() %}
+                                        <th>{{ col }}</th>
+                                    {% endfor %}
+                                {% endif %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in value %}
+                                <tr>
+                                    {% for col in row.values() %}
+                                        <td>{{ col }}</td>
+                                    {% endfor %}
+                                </tr>
                             {% endfor %}
-                        {% endif %}
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for row in value %}
-                        <tr>
-                            {% for col in row.values() %}
-                                <td>{{ col }}</td>
-                            {% endfor %}
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+                        </tbody>
+                    </table>
+                {% endfor %}
+            </div>
+            {% set first = false %}
         {% endfor %}
-    {% endfor %}
+    </div>
+
+    <!-- JavaScript 控制选项卡切换 -->
+    <script>
+        function openTab(evt, tabName) {
+            var i, tabcontent, tabbuttons;
+            tabcontent = document.getElementsByClassName("tab-content");
+            for (i = 0; i < tabcontent.length; i++) {
+                tabcontent[i].classList.remove("active");
+            }
+            tabbuttons = document.getElementsByClassName("tab-button");
+            for (i = 0; i < tabbuttons.length; i++) {
+                tabbuttons[i].classList.remove("active");
+            }
+            document.getElementById(tabName).classList.add("active");
+            evt.currentTarget.classList.add("active");
+        }
+    </script>
 </body>
 </html>
