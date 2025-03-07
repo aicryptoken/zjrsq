@@ -20,10 +20,10 @@ def home():
 def catering():
     try:
         with open('static/catering_results.json', 'r', encoding='utf-8') as f:
-            result = json.load(f)
-        if 'error' in result:
-            return render_template('error.html', error=result['error'])
-        return render_template('catering.html', result=result)
+            results = json.load(f)
+        if 'error' in results:
+            return render_template('error.html', error=results['error'])
+        return render_template('catering.html', result=results)
     except FileNotFoundError:
         return render_template('error.html', error="餐饮分析数据文件未找到，请先运行预计算脚本")
 
@@ -32,10 +32,10 @@ def catering():
 def space():
     try:
         with open('static/space_results.json', 'r', encoding='utf-8') as f:
-            result = json.load(f)
-        if 'error' in result:
-            return render_template('space.html', error=result['error'])
-        return render_template('space.html', result=result)
+            results = json.load(f)
+        if 'error' in results:
+            return render_template('space.html', error=results['error'])
+        return render_template('space.html', results=results)
     except FileNotFoundError:
         return render_template('error.html', error="空间分析数据文件未找到，请先运行预计算脚本")
 
