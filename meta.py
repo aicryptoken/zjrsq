@@ -146,5 +146,5 @@ def generate_metadata_report(db_file, output_json="metadata_report.json"):
 
 if __name__ == "__main__":
     # 替换为您的 SQLite 数据库文件路径
-    db_file = "ideapod.db"
+    db_file = "db/ideapod.db"
     generate_metadata_report(db_file)

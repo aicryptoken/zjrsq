@@ -103,7 +103,7 @@ def main():
     catering_file = "Raw_flipos_orders.csv"
     space_file = "Raw_space_orders.csv"
     member_file = "Raw_membership.csv"
-    product_file = "db/ideapod_products.csv"
+    product_file = "db/ideapod_product.csv"
     database_path = "ideapod.db"
 
     # 加载和准备数据

@@ -1,19 +1,42 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>餐饮分析</title>
+    <title>Catering 分析</title>
+    <style>
+        table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+        th, td { border: 1px solid black; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        h1, h2 { color: #333; }
+    </style>
 </head>
 <body>
-    <h1>餐饮业务分析</h1>
-    {% if result.error %}
-        <p>错误：{{ result.error }}</p>
-    {% else %}
-        <p>财务分析：{{ result.financial }}</p>
-        <p>订单优化：{{ result.order }}</p>
-        <p>会员分析：{{ result.member }}</p>
-        <p>营销分析：{{ result.marketing }}</p>
-        <p>用户分析：{{ result.user }}</p>
+    <h1>Catering 分析</h1>
 
-    {% endif %}
+    {% for category, data in results.items() %}
+        <h2>{{ category }}</h2>
+        {% for key, value in data.items() %}
+            <h3>{{ key }}</h3>
+            <table>
+                <thead>
+                    <tr>
+                        {% if value %}
+                            {% for col in value[0].keys() %}
+                                <th>{{ col }}</th>
+                            {% endfor %}
+                        {% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in value %}
+                        <tr>
+                            {% for col in row.values() %}
+                                <td>{{ col }}</td>
+                            {% endfor %}
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% endfor %}
+    {% endfor %}
 </body>
 </html>

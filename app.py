@@ -30,9 +30,10 @@ def catering():
 # 空间分析路由
 @app.route('/space')
 def space():
-    conn = get_db_connection()
-    result = ideapod_space.analyze(conn) 
-    conn.close()
+    with get_db_connection() as conn:
+        result = ideapod_space.analyze(conn)
+    if 'error' in result:
+        return render_template('error.html', error=result['error'])
     return render_template('space.html', result=result)
 
 # 元数据分析路由
