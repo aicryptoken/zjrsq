@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>空间分析</title>
+</head>
+<body>
+    <h1>空间业务分析</h1>
+    {% if result.error %}
+        <p>错误：{{ result.error }}</p>
+    {% else %}
+        <p>利用率分析：{{ result.utilization }}</p>
+        <p>订单优化：{{ result.order }}</p>
+        <p>会员分析：{{ result.member }}</p>
+        <p>用户分析：{{ result.user }}</p>
+        <p>升级分析：{{ result.upgrade }}</p>
+        <p>月度分析：{{ result.monthly }}</p>
+        <p>空间类型分析：{{ result.space_type }}</p>
+
+    {% endif %}
+</body>
+</html>
