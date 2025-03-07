@@ -23,7 +23,7 @@ def catering():
             results = json.load(f)
         if 'error' in results:
             return render_template('error.html', error=results['error'])
-        return render_template('catering.html', result=results)
+        return render_template('catering.html', results=results)
     except FileNotFoundError:
         return render_template('error.html', error="餐饮分析数据文件未找到，请先运行预计算脚本")
 

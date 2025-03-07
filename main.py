@@ -9,19 +9,27 @@ def get_db_connection():
     return conn
 
 def save_analysis_results():
-    # 获取数据库连接
     with get_db_connection() as conn:
-        # 计算餐饮分析结果
-        catering_result = ideapod_catering.analyze(conn)
-        if 'error' not in catering_result:
-            with open('static/catering_results.json', 'w', encoding='utf-8') as f:
-                json.dump(catering_result, f, ensure_ascii=False, indent=4)
-        
-        # 计算空间分析结果
-        space_result = ideapod_space.analyze(conn)
-        if 'error' not in space_result:
-            with open('static/space_results.json', 'w', encoding='utf-8') as f:
-                json.dump(space_result, f, ensure_ascii=False, indent=4)
+        try:
+            catering_result = ideapod_catering.analyze(conn)
+            if 'error' not in catering_result:
+                with open('static/catering_results.json', 'w', encoding='utf-8') as f:
+                    json.dump(catering_result, f, ensure_ascii=False, indent=4)
+                print("餐饮分析结果保存成功")
+            else:
+                print(f"餐饮分析错误: {catering_result['error']}")
+            
+            space_result = ideapod_space.analyze(conn)
+            if 'error' not in space_result:
+                with open('static/space_results.json', 'w', encoding='utf-8') as f:
+                    json.dump(space_result, f, ensure_ascii=False, indent=4)
+                print("空间分析结果保存成功")
+            else:
+                print(f"空间分析错误: {space_result['error']}")
+        except Exception as e:
+            print(f"保存分析结果时出错: {e}")
+            import traceback
+            traceback.print_exc()
 
 if __name__ == "__main__":
     save_analysis_results()

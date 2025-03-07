@@ -142,18 +142,12 @@ def analyze_order_optimization(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame
     }
 
 def analyze_member_value(space_df: pd.DataFrame, db_path: str) -> Dict[str, pd.DataFrame]:
-    """会员消费复购分析及用户留存与流失分析"""
-    # 1. 计算用户订单间隔
-    space_df = calculate_user_intervals(space_df)
-    
-    # 2. 计算活跃用户、流失用户、重新激活用户和新增用户
+    space_df = calculate_user_intervals(space_df)  # 计算间隔时使用 datetime
     active_users_df, churn_users_df, reactivated_users_df, new_users_df = calculate_user_metrics(space_df)
-    
-    # 合并所有数据
     result_df = pd.merge(active_users_df, churn_users_df, on='booking_month', how='left')
     result_df = pd.merge(result_df, reactivated_users_df, on='booking_month', how='left')
     result_df = pd.merge(result_df, new_users_df, on='booking_month', how='left')
-    
+
     member_level = space_df.groupby('等级').agg({
         '实付金额': ['mean', 'sum'],
         '订单编号': 'count',
@@ -167,9 +161,10 @@ def analyze_member_value(space_df: pd.DataFrame, db_path: str) -> Dict[str, pd.D
         '订单编号': 'count'
     }).reset_index()
     lifecycle.columns = ['会员号', '首次创建时间', '最后创建时间', '总实付金额', '订单数']
-
-    lifecycle['首次创建时间'] = lifecycle['首次创建时间'].astype(str)
-    lifecycle['最后创建时间'] = lifecycle['最后创建时间'].astype(str)
+    # 先计算时间差，然后再转换
+    lifecycle['时间跨度'] = (lifecycle['最后创建时间'] - lifecycle['首次创建时间']).dt.days
+    lifecycle['首次创建时间'] = lifecycle['首次创建时间'].fillna('未知').astype(str)
+    lifecycle['最后创建时间'] = lifecycle['最后创建时间'].fillna('未知').astype(str)
 
     payment = space_df.groupby('支付方式').agg({
         '实付金额': ['mean', 'sum'],
@@ -185,7 +180,6 @@ def analyze_member_value(space_df: pd.DataFrame, db_path: str) -> Dict[str, pd.D
     }
 
 def analyze_users(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
-    """细化的用户分析"""
     def categorize_customers(total_orders):
         if total_orders == 1:
             return '单次消费'
@@ -204,15 +198,12 @@ def analyze_users(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     })
     customer_analysis.columns = ['订单数', '首次消费时间', '最后消费时间', '总消费金额']
     customer_analysis = customer_analysis.reset_index()
-    
-    customer_analysis['首次消费时间'] = customer_analysis['首次消费时间'].astype(str)
-    customer_analysis['最后消费时间'] = customer_analysis['最后消费时间'].astype(str)
-
+    # 先计算时间差，然后再转换
+    customer_analysis['消费间隔'] = (customer_analysis['最后消费时间'] - customer_analysis['首次消费时间']).dt.days
+    customer_analysis['首次消费时间'] = customer_analysis['首次消费时间'].fillna('未知').astype(str)
+    customer_analysis['最后消费时间'] = customer_analysis['最后消费时间'].fillna('未知').astype(str)
     customer_analysis['customer_tier'] = customer_analysis['订单数'].apply(categorize_customers)
-    customer_analysis['消费间隔'] = (customer_analysis['最后消费时间'] - 
-                                customer_analysis['首次消费时间']).dt.days
 
-    # 修改为基于 customer_tier 的分组分析
     customer_tier_analysis = customer_analysis.groupby('customer_tier').agg({
         '订单数': 'sum',
         '总消费金额': 'sum',
@@ -369,56 +360,45 @@ def convert_keys_to_str(data):
     return data
     
 def convert_df_to_dict(data):
-    """将 DataFrame 或嵌套数据转换为字典，并处理 Timestamp 和 Period 类型"""
+    """将 DataFrame 或嵌套数据转换为字典，并处理 Timestamp、Period 和 NaT"""
     if isinstance(data, pd.DataFrame):
         df = data.copy()
         for col in df.columns:
             if pd.api.types.is_datetime64_any_dtype(df[col]) or pd.api.types.is_period_dtype(df[col]):
-                df[col] = df[col].astype(str)
+                df[col] = df[col].fillna('未知').astype(str)
         return df.to_dict(orient='records')
     elif isinstance(data, dict):
         return {k: convert_df_to_dict(v) for k, v in data.items()}
     elif isinstance(data, list):
         return [convert_df_to_dict(item) for item in data]
-    elif isinstance(data, (Timestamp, Period)):
-        return str(data)
+    elif isinstance(data, (pd.Timestamp, pd.Period)) or pd.isna(data):
+        return str(data) if not pd.isna(data) else '未知'
     return data
 
 def analyze(conn):
-    """
-    分析 Space 表数据，返回结果字典。
-    参数 conn: Flask 提供的数据库连接对象。
-    """
     try:
-        # 从数据库读取数据
         space_df = pd.read_sql_query("SELECT * FROM Space", conn)
         member_df = pd.read_sql_query("SELECT 会员号, 等级 FROM Member", conn)
 
-        # 数据预处理
         space_df = space_df.merge(member_df, on='会员号', how='left')
         space_df['等级'] = space_df['等级'].fillna(-1)
-
-        # 1) 删掉等级为0的数据
         space_df = space_df[space_df['等级'] != 0]
-
-        # 2) 订单商品名 这一列，删除“上海洛克外滩店-”和“the Box”字符
         space_df['订单商品名'] = space_df['订单商品名'].fillna('').str.replace('上海洛克外滩店-', '').str.replace('the Box', '')
 
-        # 处理时间字段
         space_df = preprocess_datetime(space_df)
         space_df['booking_month'] = space_df['创建时间'].dt.to_period('M')
         space_df['start_hour'] = pd.to_datetime(space_df['预定开始时间'], errors='coerce').dt.hour
 
-        # 执行所有分析
+        # 执行所有分析，保持时间列为 datetime 类型
         utilization_results = analyze_space_utilization(space_df)
         order_results = analyze_order_optimization(space_df)
-        member_results = analyze_member_value(space_df, conn)  # 传递 conn 如果需要
+        member_results = analyze_member_value(space_df, conn)
         user_results = analyze_users(space_df)
         upgrade_results = analyze_upgrades(space_df)
         monthly_results = analyze_monthly_trends(space_df)
         space_type_results = analyze_space_types(space_df)
 
-        # 合并所有结果为字典
+        # 合并所有结果
         all_results = {
             'utilization': utilization_results,
             'order': order_results,
@@ -427,14 +407,14 @@ def analyze(conn):
             'upgrade': upgrade_results,
             'monthly': monthly_results,
             'space_type': space_type_results
-            }
-        
+        }
+
+        # 转换为可序列化格式（仅在此处处理时间列）
         processed_results = {}
         for category, data in all_results.items():
             processed_results[category] = {key: convert_df_to_dict(value) for key, value in data.items()}
         
         processed_results = convert_keys_to_str(processed_results)
-
         return processed_results
 
     except sqlite3.Error as e:
