@@ -99,7 +99,6 @@
         {% set first = true %}
         {% for category, data in results.items() %}
             <div id="{{ category|replace(' ', '_')|e }}" class="tab-content {% if first %}active{% endif %}">
-                <h2>{{ category }}</h2>
                 {% for key, value in data.items() %}
                     <h3>{{ key }}</h3>
                     <table>
