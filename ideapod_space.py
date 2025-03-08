@@ -20,8 +20,8 @@ def preprocess_datetime(df: pd.DataFrame) -> pd.DataFrame:
 
 def calculate_user_intervals(orders_df: pd.DataFrame) -> pd.DataFrame:
     """计算用户订单间隔"""
-    orders_df['prev_order_date'] = orders_df.groupby('会员号')['创建时间'].shift(1)
-    orders_df['order_interval'] = (orders_df['创建时间'] - orders_df['prev_order_date']).dt.days
+    orders_df['上次下单日期'] = orders_df.groupby('会员号')['创建时间'].shift(1)
+    orders_df['order_interval'] = (orders_df['创建时间'] - orders_df['上次下单日期']).dt.days
     return orders_df
 
 def calculate_user_metrics(orders_df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -96,7 +96,7 @@ def analyze_space_utilization(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]
     space_df['是否高效使用'] = (space_df['使用率'] >= 90).astype(int)
 
     # 高峰vs低谷时段分析
-    peak_analysis = space_df.groupby('start_hour').agg({
+    peak_analysis = space_df.groupby('开始使用时刻').agg({
         '订单编号': 'count',
         '实付金额': 'sum'
     }).reset_index()
@@ -120,7 +120,7 @@ def analyze_order_optimization(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame
     """订单收入优化分析"""
     # 加钟行为分析
     space_df['是否加钟'] = (space_df['加钟数'] > 0).astype(int)
-    overtime_analysis = space_df.groupby(['订单商品名', 'start_hour']).agg({
+    overtime_analysis = space_df.groupby(['订单商品名', '开始使用时刻']).agg({
         '是否加钟': 'sum',
         '订单编号': 'count', 
         '实付金额': 'mean'
@@ -202,9 +202,9 @@ def analyze_users(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     customer_analysis['消费间隔'] = (customer_analysis['最后消费时间'] - customer_analysis['首次消费时间']).dt.days
     customer_analysis['首次消费时间'] = customer_analysis['首次消费时间'].fillna('未知').astype(str)
     customer_analysis['最后消费时间'] = customer_analysis['最后消费时间'].fillna('未知').astype(str)
-    customer_analysis['customer_tier'] = customer_analysis['订单数'].apply(categorize_customers)
+    customer_analysis['用户消费次数'] = customer_analysis['订单数'].apply(categorize_customers)
 
-    customer_tier_analysis = customer_analysis.groupby('customer_tier').agg({
+    customer_tier_analysis = customer_analysis.groupby('用户消费次数').agg({
         '订单数': 'sum',
         '总消费金额': 'sum',
         '消费间隔': 'mean'
@@ -335,12 +335,12 @@ def analyze_space_types(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
         return (total_hours / (daily_hours * len(df))) * 100
 
     hourly_utilization = (
-        space_df.groupby(['start_hour', '订单商品名'])
+        space_df.groupby(['开始使用时刻', '订单商品名'])
         .apply(lambda x: calculate_hourly_utilization(x.reset_index(drop=True)))
         .reset_index(name='有效使用率')
     )
 
-    hourly_utilization = hourly_utilization.groupby('start_hour').agg({
+    hourly_utilization = hourly_utilization.groupby('开始使用时刻').agg({
         '有效使用率': 'mean'
     }).reset_index()
 
@@ -387,7 +387,7 @@ def analyze(conn):
 
         space_df = preprocess_datetime(space_df)
         space_df['booking_month'] = space_df['创建时间'].dt.to_period('M')
-        space_df['start_hour'] = pd.to_datetime(space_df['预定开始时间'], errors='coerce').dt.hour
+        space_df['开始使用时刻'] = pd.to_datetime(space_df['预定开始时间'], errors='coerce').dt.hour
 
         # 执行所有分析，保持时间列为 datetime 类型
         utilization_results = analyze_space_utilization(space_df)
@@ -400,13 +400,13 @@ def analyze(conn):
 
         # 合并所有结果
         all_results = {
-            'utilization': utilization_results,
-            'order': order_results,
-            'member': member_results,
-            'user': user_results,
-            'upgrade': upgrade_results,
-            'monthly': monthly_results,
-            'space_type': space_type_results
+            '空间利用率分析': utilization_results,
+            '订单分析': order_results,
+            '会员分析': member_results,
+            '用户分析': user_results,
+            '升舱分析': upgrade_results,
+            '月度数据': monthly_results,
+            '空间类型月度分析': space_type_results
         }
 
         # 转换为可序列化格式（仅在此处处理时间列）
