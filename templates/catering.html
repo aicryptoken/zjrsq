@@ -2,103 +2,31 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>Catering 分析</title>
-    <style>
-        /* 基础样式 */
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            color: #333;
-        }
-        h1 {
-            color: #333;
-            text-align: center;
-        }
-        h2 {
-            color: #333;
-            margin-top: 0;
-        }
-        
-        /* 选项卡样式 */
-        .tab-container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-        .tab-buttons {
-            overflow: hidden;
-            border-bottom: 2px solid #ccc;
-            margin-bottom: 20px;
-        }
-        .tab-buttons button {
-            background-color: #f2f2f2;
-            border: none;
-            outline: none;
-            cursor: pointer;
-            padding: 14px 20px;
-            float: left;
-            transition: 0.3s;
-            font-size: 16px;
-        }
-        .tab-buttons button:hover {
-            background-color: #ddd;
-        }
-        .tab-buttons button.active {
-            background-color: #ccc;
-            font-weight: bold;
-        }
-        
-        /* 内容样式 */
-        .tab-content {
-            display: none;
-            padding: 20px;
-            border: 1px solid #ccc;
-            border-top: none;
-        }
-        .tab-content.active {
-            display: block;
-        }
-        table {
-            border-collapse: collapse;
-            width: 100%;
-            margin-bottom: 20px;
-        }
-        th, td {
-            border: 1px solid black;
-            padding: 8px;
-            text-align: left;
-        }
-        th {
-            background-color: #f2f2f2;
-        }
-    </style>
+    <title>餐饮分析</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
-    <h1>Catering 分析</h1>
+    <h1>餐饮分析</h1>
+    <nav>
+        <a href="/">首页</a> |
+        <a href="/space">场景分析</a> |
+    </nav>
     <div class="tab-container">
-        <!-- 动态生成选项卡按钮 -->
+        <!-- 选项卡按钮 -->
         <div class="tab-buttons">
             {% set first = true %}
             {% for category in results.keys() %}
                 <button class="tab-button {% if first %}active{% endif %}" data-tab="{{ category|replace(' ', '_') }}">
                     {{ category }}
                 </button>
-                
-                <script>
-                document.querySelectorAll('.tab-button').forEach(button => {
-                    button.addEventListener('click', function(event) {
-                        const tabName = this.getAttribute('data-tab');
-                        openTab(event, tabName);
-                    });
-                });
-                </script>
                 {% set first = false %}
             {% endfor %}
         </div>
-
-        <!-- 动态生成选项卡内容 -->
+    
+        <!-- 选项卡内容 -->
         {% set first = true %}
         {% for category, data in results.items() %}
-            <div id="{{ category|replace(' ', '_')|e }}" class="tab-content {% if first %}active{% endif %}">
+            <div id="{{ category|replace(' ', '_') }}" class="tab-content {% if first %}active{% endif %}">
                 {% for key, value in data.items() %}
                     <h3>{{ key }}</h3>
                     <table>
@@ -115,7 +43,13 @@
                             {% for row in value %}
                                 <tr>
                                     {% for col in row.values() %}
-                                        <td>{{ col }}</td>
+                                        <td>
+                                            {% if col is number %}
+                                                {{ col|round(2) }}
+                                            {% else %}
+                                                {{ col }}
+                                            {% endif %}
+                                        </td>
                                     {% endfor %}
                                 </tr>
                             {% endfor %}
@@ -126,9 +60,26 @@
             {% set first = false %}
         {% endfor %}
     </div>
+    <footer>
+        <p>版权所有 © 2023</p>
+    </footer>
 
     <!-- JavaScript 控制选项卡切换 -->
     <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // 默认显示第一个选项卡
+            document.querySelector('.tab-content').classList.add('active');
+            document.querySelector('.tab-button').classList.add('active');
+
+            // 为所有选项卡按钮添加点击事件
+            document.querySelectorAll('.tab-button').forEach(button => {
+                button.addEventListener('click', function(event) {
+                    const tabName = this.getAttribute('data-tab');
+                    openTab(event, tabName);
+                });
+            });
+        });
+
         function openTab(evt, tabName) {
             var i, tabcontent, tabbuttons;
             tabcontent = document.getElementsByClassName("tab-content");
