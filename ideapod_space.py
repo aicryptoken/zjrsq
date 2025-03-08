@@ -26,36 +26,26 @@ def calculate_user_intervals(orders_df: pd.DataFrame) -> pd.DataFrame:
 
 def calculate_user_metrics(orders_df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """计算活跃用户、流失用户、重新激活用户和新增用户"""
-    # 获取所有唯一的booking_month并转换为datetime
     unique_months = sorted(orders_df['booking_month'].unique())
     
-    # 计算每个用户的最后订单日期和首次订单日期
     last_order_dates = orders_df.groupby('会员号')['创建时间'].max().reset_index()
     first_order_dates = orders_df.groupby('会员号')['创建时间'].min().reset_index()
     
-    # 初始化结果容器
-    active_users = []
-    churn_users = []
-    reactivated_users = []
-    new_users = []
+    active_users, churn_users, reactivated_users, new_users = [], [], [], []
     
     for period_month in unique_months:
-        # 将Period转换为datetime
         month_start = period_month.to_timestamp()
         month_end = period_month.to_timestamp('M')
         
-        # 活跃用户
         active_30d = len(orders_df[(orders_df['创建时间'] >= month_end - timedelta(days=30)) &
                                  (orders_df['创建时间'] <= month_end)].会员号.unique())
         active_60d = len(orders_df[(orders_df['创建时间'] >= month_end - timedelta(days=60)) &
                                  (orders_df['创建时间'] <= month_end)].会员号.unique())
         active_90d = len(orders_df[(orders_df['创建时间'] >= month_end - timedelta(days=90)) &
                                  (orders_df['创建时间'] <= month_end)].会员号.unique())
-        active_users.append({'booking_month': str(period_month), 'active_30d': active_30d,
-                             'active_60d': active_60d, 'active_90d': active_90d})
+        active_users.append({'booking_month': str(period_month), '活跃用户_30天': active_30d,
+                             '活跃用户_60天': active_60d, '活跃用户_90天': active_90d})
         
-        
-        # 流失用户
         churn_30_60d = len(last_order_dates[(last_order_dates['创建时间'] < month_end - timedelta(days=30)) &
                                           (last_order_dates['创建时间'] >= month_end - timedelta(days=60))].会员号.unique())
         churn_60_90d = len(last_order_dates[(last_order_dates['创建时间'] < month_end - timedelta(days=60)) &
@@ -63,24 +53,20 @@ def calculate_user_metrics(orders_df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Da
         churn_90_120d = len(last_order_dates[(last_order_dates['创建时间'] < month_end - timedelta(days=90)) &
                                            (last_order_dates['创建时间'] >= month_end - timedelta(days=120))].会员号.unique())
         dormant_120d_plus = len(last_order_dates[last_order_dates['创建时间'] < month_end - timedelta(days=120)].会员号.unique())
-        churn_users.append({'booking_month': str(period_month), 'churn_warning_30_60d': churn_30_60d,
-                            'churn_warning_60_90d': churn_60_90d, 'churned_90_120d': churn_90_120d,
-                            'dormant_120d_plus': dormant_120d_plus})
+        churn_users.append({'booking_month': str(period_month), '流失预警_30_60天': churn_30_60d,
+                            '流失预警_60_90天': churn_60_90d, '已流失_90_120天': churn_90_120d,
+                            '长期未活跃_120天以上': dormant_120d_plus})
         
-        
-        # 重新激活用户
         users_with_previous_order = orders_df[(orders_df['创建时间'] < month_start - timedelta(days=90)) &
                                            (orders_df['创建时间'] >= month_start - timedelta(days=180))].会员号.unique()
         reactivated_in_month = len(orders_df[(orders_df['会员号'].isin(users_with_previous_order)) &
                                            (orders_df['创建时间'] >= month_start) &
                                            (orders_df['创建时间'] <= month_end)].会员号.unique())
-        reactivated_users.append({'booking_month': str(period_month), 'reactivated_users': reactivated_in_month})
+        reactivated_users.append({'booking_month': str(period_month), '重新激活用户': reactivated_in_month})
         
-        
-        # 新增用户
         new_in_month = len(first_order_dates[(first_order_dates['创建时间'] >= month_start) &
                                            (first_order_dates['创建时间'] <= month_end)].会员号.unique())
-        new_users.append({'booking_month': str(period_month), 'new_user_count': new_in_month})
+        new_users.append({'booking_month': str(period_month), '新增用户': new_in_month})
     
     return (
         pd.DataFrame(active_users),
@@ -91,11 +77,9 @@ def calculate_user_metrics(orders_df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Da
 
 def analyze_space_utilization(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     """空间利用率优化分析"""
-    # 预定vs实际使用时长分析
     space_df['使用率'] = (space_df['实际时长'] / space_df['预定时长']) * 100
     space_df['是否高效使用'] = (space_df['使用率'] >= 90).astype(int)
 
-    # 高峰vs低谷时段分析
     peak_analysis = space_df.groupby('开始使用时刻').agg({
         '订单编号': 'count',
         '实付金额': 'sum'
@@ -103,7 +87,6 @@ def analyze_space_utilization(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]
     peak_analysis['收入占比'] = peak_analysis['实付金额'] / peak_analysis['实付金额'].sum() * 100
     peak_analysis['订单占比'] = peak_analysis['订单编号'] / peak_analysis['订单编号'].sum() * 100
 
-    # 单次使用vs复购对比
     space_df['是否首单'] = (space_df.groupby('会员号')['创建时间'].transform('rank', method='first') == 1).astype(int)
     purchase_comparison = space_df.groupby('是否首单').agg({
         '实付金额': ['mean', 'sum'],
@@ -112,13 +95,12 @@ def analyze_space_utilization(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]
     }).reset_index()
 
     return {
-        '1-高峰时段分析': peak_analysis,
-        '1-首单复购对比': purchase_comparison
+        '6-高峰时段分析': peak_analysis,
+        '6-首单复购对比': purchase_comparison
     }
 
 def analyze_order_optimization(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     """订单收入优化分析"""
-    # 加钟行为分析
     space_df['是否加钟'] = (space_df['加钟数'] > 0).astype(int)
     overtime_analysis = space_df.groupby(['订单商品名', '开始使用时刻']).agg({
         '是否加钟': 'sum',
@@ -127,22 +109,12 @@ def analyze_order_optimization(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame
     }).reset_index()
     overtime_analysis['加钟率'] = overtime_analysis['是否加钟'] / overtime_analysis['订单编号'] * 100
 
-    # 未支付订单分析
-    payment_status = space_df.groupby(['订单状态', '订单商品名']).agg({
-        '订单编号': 'count',  
-        '实付金额': 'sum'
-    }).reset_index()
-    
-    total_orders = payment_status.groupby('订单商品名')['订单编号'].transform('sum')
-    payment_status['订单占比'] = payment_status['订单编号'] / total_orders * 100
-
     return {
-        '2-加钟分析': overtime_analysis,
-        '2-支付状态分析': payment_status
+        '2-加钟分析': overtime_analysis
     }
 
 def analyze_member_value(space_df: pd.DataFrame, db_path: str) -> Dict[str, pd.DataFrame]:
-    space_df = calculate_user_intervals(space_df)  # 计算间隔时使用 datetime
+    space_df = calculate_user_intervals(space_df)
     active_users_df, churn_users_df, reactivated_users_df, new_users_df = calculate_user_metrics(space_df)
     result_df = pd.merge(active_users_df, churn_users_df, on='booking_month', how='left')
     result_df = pd.merge(result_df, reactivated_users_df, on='booking_month', how='left')
@@ -155,17 +127,6 @@ def analyze_member_value(space_df: pd.DataFrame, db_path: str) -> Dict[str, pd.D
     }).reset_index()
     member_level.columns = ['等级', '平均实付金额', '总实付金额', '订单数', '独立会员数']
 
-    lifecycle = space_df.groupby('会员号').agg({
-        '创建时间': ['min', 'max'],
-        '实付金额': 'sum',
-        '订单编号': 'count'
-    }).reset_index()
-    lifecycle.columns = ['会员号', '首次创建时间', '最后创建时间', '总实付金额', '订单数']
-    # 先计算时间差，然后再转换
-    lifecycle['时间跨度'] = (lifecycle['最后创建时间'] - lifecycle['首次创建时间']).dt.days
-    lifecycle['首次创建时间'] = lifecycle['首次创建时间'].fillna('未知').astype(str)
-    lifecycle['最后创建时间'] = lifecycle['最后创建时间'].fillna('未知').astype(str)
-
     payment = space_df.groupby('支付方式').agg({
         '实付金额': ['mean', 'sum'],
         '订单编号': 'count'
@@ -174,7 +135,6 @@ def analyze_member_value(space_df: pd.DataFrame, db_path: str) -> Dict[str, pd.D
 
     return {
         '3-会员等级消费': member_level,
-        '3-用户生命周期': lifecycle,
         '3-支付方式影响': payment,
         '3-用户留存与流失': result_df
     }
@@ -198,44 +158,57 @@ def analyze_users(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     })
     customer_analysis.columns = ['订单数', '首次消费时间', '最后消费时间', '总消费金额']
     customer_analysis = customer_analysis.reset_index()
-    # 先计算时间差，然后再转换
     customer_analysis['消费间隔'] = (customer_analysis['最后消费时间'] - customer_analysis['首次消费时间']).dt.days
     customer_analysis['首次消费时间'] = customer_analysis['首次消费时间'].fillna('未知').astype(str)
     customer_analysis['最后消费时间'] = customer_analysis['最后消费时间'].fillna('未知').astype(str)
     customer_analysis['用户消费次数'] = customer_analysis['订单数'].apply(categorize_customers)
 
     customer_tier_analysis = customer_analysis.groupby('用户消费次数').agg({
+        '会员号': 'nunique',
         '订单数': 'sum',
         '总消费金额': 'sum',
         '消费间隔': 'mean'
     }).reset_index()
+    customer_tier_analysis.columns = ['用户消费次数', '独立用户数', '订单数', '总消费金额', '平均消费间隔']
 
-    return {'4-客户分层分析': customer_tier_analysis}
+    lifecycle = space_df.groupby('会员号').agg({
+        '创建时间': ['min', 'max'],
+        '实付金额': 'sum',
+        '订单编号': 'count'
+    }).reset_index()
+    lifecycle.columns = ['会员号', '首次创建时间', '最后创建时间', '总实付金额', '订单数']
+    lifecycle['时间跨度'] = (lifecycle['最后创建时间'] - lifecycle['首次创建时间']).dt.days
+    lifecycle['首次创建时间'] = lifecycle['首次创建时间'].fillna('未知').astype(str)
+    lifecycle['最后创建时间'] = lifecycle['最后创建时间'].fillna('未知').astype(str)
+
+    lifecycle_10_plus = lifecycle[lifecycle['订单数'] > 10]
+    lifecycle_6_10 = lifecycle[lifecycle['订单数'].between(6, 10, inclusive='both')]
+
+    return {
+        '4-客户分层分析': customer_tier_analysis,
+        '4-10次以上用户生命周期': lifecycle_10_plus,
+        '4-6-10次用户生命周期': lifecycle_6_10
+    }
 
 def analyze_upgrades(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     """合并的升舱分析"""
-    # Convert 升舱 to 1/0 for aggregation
     space_df['升舱标记'] = (space_df['升舱'] == '是').astype(int)
     
-    # Calculate basic metrics for all orders
     base_analysis = space_df.groupby('booking_month').agg({
         '升舱标记': 'sum',
         '订单编号': 'count' 
     }).reset_index()
     
-    # Calculate revenue for upgraded orders
     upgrade_revenue = space_df[space_df['升舱标记'] == 1].groupby('booking_month').agg({
         '实付金额': 'sum'
     }).reset_index()
     upgrade_revenue.columns = ['booking_month', '升舱金额']
     
-    # Calculate revenue for non-upgraded orders
     non_upgrade_revenue = space_df[space_df['升舱标记'] == 0].groupby('booking_month').agg({
         '实付金额': 'sum'
     }).reset_index()
     non_upgrade_revenue.columns = ['booking_month', '未升舱金额']
     
-    # Combine all metrics
     upgrade_analysis = base_analysis.merge(
         upgrade_revenue, 
         on='booking_month', 
@@ -246,113 +219,89 @@ def analyze_upgrades(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
         how='left'
     )
     
-    # Rename and reorganize columns
     upgrade_analysis = upgrade_analysis.rename(columns={
         'booking_month': '月份',
         '升舱标记': '升舱订单数'
     })
     upgrade_analysis['未升舱订单数'] = upgrade_analysis['订单编号'] - upgrade_analysis['升舱订单数']
     
-    # Fill any NaN values with 0
     upgrade_analysis = upgrade_analysis.fillna(0)
-    
-    # Select and order final columns
-    upgrade_analysis = upgrade_analysis[[
-        '月份', '未升舱订单数', '升舱订单数', '未升舱金额', '升舱金额'
-    ]]
-    
-    # Convert month to string
+    upgrade_analysis = upgrade_analysis[['月份', '未升舱订单数', '升舱订单数', '未升舱金额', '升舱金额']]
     upgrade_analysis['月份'] = upgrade_analysis['月份'].astype(str)
     
     return {'5-升舱分析': upgrade_analysis}
 
-def analyze_monthly_trends(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
-    """合并的月度分析"""
-    monthly_analysis = space_df.groupby('booking_month').agg({
+def analyze_weekly_finance(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
+    """周度财务分析"""
+    space_df['booking_week'] = space_df['创建时间'].dt.to_period('W-MON')
+    weekly_analysis = space_df.groupby('booking_week').agg({
         '订单编号': 'count',  
         '实付金额': ['sum', 'mean'],
         '会员号': 'nunique',
         '实际时长': ['sum', 'mean']
     })
     
-    # Flatten column names
-    monthly_analysis.columns = ['订单数', '总收入', '平均订单金额',
-                              '活跃会员数', '总使用时长', '平均使用时长']
-    monthly_analysis = monthly_analysis.reset_index()
-    monthly_analysis['月份'] = monthly_analysis['booking_month'].astype(str)  # 确保已经是字符串
-    monthly_analysis = monthly_analysis.drop(columns=['booking_month'])  # 删除 Period 列
-    return {'6-月度趋势分析': monthly_analysis}
+    weekly_analysis.columns = ['订单数', '总收入', '平均订单金额', '活跃会员数', '总使用时长', '平均使用时长']
+    weekly_analysis = weekly_analysis.reset_index()
+    weekly_analysis['周'] = weekly_analysis['booking_week'].astype(str)
+    weekly_analysis = weekly_analysis.drop(columns=['booking_week'])
+    weekly_analysis = weekly_analysis[['周', '订单数', '总收入', '平均订单金额', '活跃会员数', '总使用时长', '平均使用时长']]
+    return {'1-周度财务分析': weekly_analysis}
 
 def analyze_space_types(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
-    """合并的空间类型分析"""
+    """周度空间类型分析"""
+    space_df['booking_week'] = space_df['创建时间'].dt.to_period('W-MON')
+    
     def calculate_space_utilization(df):
-        # 获取空间类型
-        space_type = df['订单商品名'].iloc[0]  # 直接从 DataFrame 中获取空间类型
-        daily_hours = 17 if isinstance(space_type, str) and '心流舱' in space_type else 11
-        total_hours = df['实际时长'].sum()
-        days = df['创建时间'].dt.days_in_month.iloc[0]  # 从创建时间中获取月份的天数
-        return (total_hours / (daily_hours * days)) * 100 if days > 0 else 0
-
-    # 数据预处理：确保 '创建时间' 是 datetime 类型
-    space_df['创建时间'] = pd.to_datetime(space_df['创建时间'])
-
-    # 分组并计算利用率
-    utilization_rates = (
-        space_df.groupby(['booking_month', '订单商品名'])
-        .apply(lambda x: calculate_space_utilization(x.reset_index(drop=True)))
-        .reset_index(name='利用率')
-    )
-
-    utilization_rates['booking_month'] = utilization_rates['booking_month'].astype(str)  # 转换为字符串
-
-    # 分组并聚合基本指标
-    space_type_analysis = space_df.groupby(['booking_month', '订单商品名']).agg({
-        '订单编号': 'count', 
-        '实付金额': ['sum', 'mean'],
-        '实际时长': ['sum', 'mean']
-    }).reset_index()
-
-    # 展平多级列名
-    space_type_analysis.columns = ['月份', '空间类型', '订单数', '总收入', '平均订单金额', '总使用时长', '平均使用时长']
-    space_type_analysis['月份'] = space_type_analysis['月份'].astype(str)  # 确保是字符串
-
-    # 合并利用率数据
-    space_type_analysis = space_type_analysis.merge(
-        utilization_rates,
-        left_on=['月份', '空间类型'],
-        right_on=['booking_month', '订单商品名'],
-        how='left'
-    ).drop(columns=['booking_month', '订单商品名'])
-
-    # 确保月份是字符串类型
-    space_type_analysis['月份'] = space_type_analysis['月份'].astype(str)
-
-    # 新增：时段使用率分析
-    def calculate_hourly_utilization(df):
         space_type = df['订单商品名'].iloc[0]
         daily_hours = 17 if isinstance(space_type, str) and '心流舱' in space_type else 11
         total_hours = df['实际时长'].sum()
-        return (total_hours / (daily_hours * len(df))) * 100
+        return (total_hours / (daily_hours * 7)) * 100  # 按周计算，7天
 
-    hourly_utilization = (
-        space_df.groupby(['开始使用时刻', '订单商品名'])
-        .apply(lambda x: calculate_hourly_utilization(x.reset_index(drop=True)))
-        .reset_index(name='有效使用率')
-    )
+    results = {}
+    for metric in ['订单数', '总收入', '总使用时长', '平均使用时长', '利用率']:
+        if metric == '订单数':
+            df = space_df.groupby(['booking_week', '订单商品名'])['订单编号'].count().reset_index()
+            df.columns = ['周', '空间类型', '订单数']
+        elif metric == '总收入':
+            df = space_df.groupby(['booking_week', '订单商品名'])['实付金额'].sum().reset_index()
+            df.columns = ['周', '空间类型', '总收入']
+        elif metric == '总使用时长':
+            df = space_df.groupby(['booking_week', '订单商品名'])['实际时长'].sum().reset_index()
+            df.columns = ['周', '空间类型', '总使用时长']
+        elif metric == '平均使用时长':
+            df = space_df.groupby(['booking_week', '订单商品名'])['实际时长'].mean().reset_index()
+            df.columns = ['周', '空间类型', '平均使用时长']
+        elif metric == '利用率':
+            df = space_df.groupby(['booking_week', '订单商品名']).apply(calculate_space_utilization).reset_index(name='利用率')
+            df.columns = ['周', '空间类型', '利用率']
+        
+        df['周'] = df['周'].astype(str)
+        results[f'7-空间类型分析-{metric}'] = df.pivot(index='周', columns='空间类型', values=metric).reset_index().rename_axis(None, axis=1)
 
-    hourly_utilization = hourly_utilization.groupby('开始使用时刻').agg({
-        '有效使用率': 'mean'
-    }).reset_index()
+    hourly_utilization = space_df.groupby(['booking_week', '开始使用时刻']).apply(
+        lambda x: (x['实际时长'].sum() / (17 if '心流舱' in x['订单商品名'].iloc[0] else 11) / 7) * 100
+    ).reset_index(name='有效使用率')
+    hourly_utilization['booking_week'] = hourly_utilization['booking_week'].astype(str)
+    hourly_utilization_pivot = hourly_utilization.pivot(index='booking_week', columns='开始使用时刻', values='有效使用率').reset_index().rename_axis(None, axis=1)
+    hourly_utilization_pivot = hourly_utilization_pivot.rename(columns={'booking_week': '周'})
+    results['7-周度时段使用率分析'] = hourly_utilization_pivot
 
-    hourly_utilization.columns = ['时段', '有效使用率']
+    space_df['weekday'] = space_df['创建时间'].dt.day_name(locale='zh_CN')
+    weekday_order = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日']
+    space_df['booking_month'] = space_df['创建时间'].dt.to_period('M')
+    weekly_day_utilization = space_df.groupby(['booking_month', 'weekday']).apply(
+        lambda x: (x['实际时长'].sum() / (17 if '心流舱' in x['订单商品名'].iloc[0] else 11) / len(x['创建时间'].dt.date.unique())) * 100
+    ).reset_index(name='有效使用率')
+    weekly_day_utilization['booking_month'] = weekly_day_utilization['booking_month'].astype(str)
+    weekly_day_pivot = weekly_day_utilization.pivot(index='booking_month', columns='weekday', values='有效使用率').reset_index().rename_axis(None, axis=1)
+    weekly_day_pivot = weekly_day_pivot.reindex(columns=['booking_month'] + weekday_order)
+    weekly_day_pivot = weekly_day_pivot.rename(columns={'booking_month': '月份'})
+    results['7-周内使用率分析'] = weekly_day_pivot
 
-    return {
-        '7-空间类型分析': space_type_analysis,
-        '7-时段使用率分析': hourly_utilization  # 新增的时段使用率分析
-    }
+    return results
 
 def convert_keys_to_str(data):
-    """递归地将字典中的元组键转换为字符串"""
     if isinstance(data, dict):
         return {str(k) if isinstance(k, tuple) else k: convert_keys_to_str(v) for k, v in data.items()}
     elif isinstance(data, list):
@@ -360,7 +309,6 @@ def convert_keys_to_str(data):
     return data
     
 def convert_df_to_dict(data):
-    """将 DataFrame 或嵌套数据转换为字典，并处理 Timestamp、Period 和 NaT"""
     if isinstance(data, pd.DataFrame):
         df = data.copy()
         for col in df.columns:
@@ -389,27 +337,24 @@ def analyze(conn):
         space_df['booking_month'] = space_df['创建时间'].dt.to_period('M')
         space_df['开始使用时刻'] = pd.to_datetime(space_df['预定开始时间'], errors='coerce').dt.hour
 
-        # 执行所有分析，保持时间列为 datetime 类型
         utilization_results = analyze_space_utilization(space_df)
         order_results = analyze_order_optimization(space_df)
         member_results = analyze_member_value(space_df, conn)
         user_results = analyze_users(space_df)
         upgrade_results = analyze_upgrades(space_df)
-        monthly_results = analyze_monthly_trends(space_df)
+        weekly_results = analyze_weekly_finance(space_df)
         space_type_results = analyze_space_types(space_df)
 
-        # 合并所有结果
         all_results = {
-            '空间利用率分析': utilization_results,
+            '财务数据': weekly_results,
             '订单分析': order_results,
             '会员分析': member_results,
             '用户分析': user_results,
             '升舱分析': upgrade_results,
-            '月度数据': monthly_results,
-            '空间类型月度分析': space_type_results
+            '空间利用率分析': utilization_results,
+            '空间类型周度分析': space_type_results
         }
 
-        # 转换为可序列化格式（仅在此处处理时间列）
         processed_results = {}
         for category, data in all_results.items():
             processed_results[category] = {key: convert_df_to_dict(value) for key, value in data.items()}
