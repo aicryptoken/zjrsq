@@ -29,7 +29,7 @@
             <div id="{{ category|replace(' ', '_') }}" class="tab-content {% if first %}active{% endif %}">
                 {% for key, value in data.items() %}
                     <h3>{{ key }}</h3>
-                    <table>
+                    <table class="data-table">
                         <thead>
                             <tr>
                                 {% if value %}
@@ -61,7 +61,7 @@
         {% endfor %}
     </div>
     <footer>
-        <p>版权所有 © 2023</p>
+        <p>Copyright © 2025</p>
     </footer>
 
     <!-- JavaScript 控制选项卡切换 -->

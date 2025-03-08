@@ -29,7 +29,7 @@
             <div id="{{ category|replace(' ', '_') }}" class="tab-content {% if first %}active{% endif %}">
                 {% for key, value in data.items() %}
                     <h3>{{ key }}</h3>
-                    <table>
+                    <table class="data-table">
                         <thead>
                             <tr>
                                 {% if value %}
