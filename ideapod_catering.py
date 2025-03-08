@@ -32,17 +32,17 @@ def financial_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
 
     # 月度实收金额分析
     monthly_revenue_df = catering_df.groupby('订单月份').agg(
-        total_revenue=('实收', 'sum'),
-        total_orders=('订单号', 'count'),
-        avg_order_price=('实收', 'mean')
+        消费总金额=('实收', 'sum'),
+        订单数量=('订单号', 'count'),
+        订单单价=('实收', 'mean')
     ).reset_index()
     monthly_revenue_df['订单月份'] = monthly_revenue_df['订单月份'].astype(str)
 
     # 时间段销售分析
     time_period_analysis = catering_df.groupby(['订单月份', '订单时刻']).agg(
-        total_orders=('订单号', 'count'),
-        total_revenue=('实收', 'sum'),
-        avg_order_price=('实收', 'mean')
+        订单数量=('订单号', 'count'),
+        消费总金额=('实收', 'sum'),
+        订单单价=('实收', 'mean')
     ).reset_index()
     time_period_analysis['订单月份'] = time_period_analysis['订单月份'].astype(str)
 
@@ -66,26 +66,26 @@ def order_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
 
     # 订单来源分析
     order_source_analysis = catering_df.groupby(['订单月份', '订单来源']).agg(
-        total_orders=('订单号', 'count'),
-        total_revenue=('实收', 'sum'),
-        avg_order_price=('实收', 'mean')
+        订单数量=('订单号', 'count'),
+        消费总金额=('实收', 'sum'),
+        订单单价=('实收', 'mean')
     ).reset_index()
     order_source_analysis['订单月份'] = order_source_analysis['订单月份'].astype(str)
 
     # 支付方式分析
     payment_method_analysis = catering_df.groupby(['订单月份', '支付方式']).agg(
-        total_orders=('订单号', 'count'),
-        total_revenue=('实收', 'sum'),
-        avg_order_price=('实收', 'mean'),
-        discounted_orders_pct=('打折', lambda x: (x > 0).mean() * 100),
-        avg_discount=('打折', 'mean')
+        订单数量=('订单号', 'count'),
+        消费总金额=('实收', 'sum'),
+        订单单价=('实收', 'mean'),
+        折扣订单数占比=('打折', lambda x: (x > 0).mean() * 100),
+        平均折扣=('打折', 'mean')
     ).reset_index()
     payment_method_analysis['订单月份'] = payment_method_analysis['订单月份'].astype(str)
 
     # 退单分析
     refund_analysis = catering_df.groupby(['订单月份', '退单类型']).agg(
-        退款单数量=('订单号', 'count'),
-        refund_amount=('实收', 'sum')
+        退单数量=('订单号', 'count'),
+        退单金额=('实收', 'sum')
     ).reset_index()
     total_orders = catering_df.groupby('订单月份').size().reset_index(name='total_orders')
     refund_analysis = pd.merge(refund_analysis, total_orders, on='订单月份')
@@ -146,7 +146,7 @@ def product_analysis(catering_df: pd.DataFrame, conn) -> dict:
 
     # 按月和基础产品统计销售数量
     product_monthly_sales = product_sales.groupby(['订单月份', '基础产品']).agg(
-        total_quantity=('quantity', 'sum')
+        总消费数量=('quantity', 'sum')
     ).reset_index()
 
     return {
@@ -163,10 +163,10 @@ def marketing_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     catering_df['促销类型'] = catering_df['使用优惠'].fillna('无优惠')
 
     promotion_analysis = catering_df.groupby(['订单月份', '促销类型']).agg(
-        total_orders=('订单号', 'count'),
-        total_revenue=('实收', 'sum'),
-        avg_discount=('打折', 'mean'),
-        total_discount_amount=('打折', 'sum')
+        订单总数=('订单号', 'count'),
+        消费总金额=('实收', 'sum'),
+        平均折扣=('打折', 'mean'),
+        总折扣金额=('打折', 'sum')
     ).reset_index()
     promotion_analysis['订单月份'] = promotion_analysis['订单月份'].astype(str)
 
@@ -199,23 +199,23 @@ def user_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
 
     # 按会员号和月份统计订单行为
     member_monthly_analysis = catering_df.groupby(['member_id', '订单月份']).agg(
-        total_orders=('订单号', 'count'),
-        total_revenue=('实收', 'sum'),
-        avg_order_quantity=('商品', lambda x: x.str.count(',').mean() + 1),  # 每个订单的平均商品数量
-        avg_revenue=('实收', 'mean'),  # 每个订单的平均收入
-        avg_order_price=('实收', 'mean')  # 每个订单的平均订单价格
+        总订单数=('订单号', 'count'),           # 修改为中文：总订单数
+        总收入=('实收', 'sum'),               # 修改为中文：总收入
+        平均订单数量=('商品', lambda x: x.str.count(',').mean() + 1),  # 修改为中文：平均订单数量
+        平均收入=('实收', 'mean'),            # 修改为中文：平均收入
+        平均订单价格=('实收', 'mean')         # 修改为中文：平均订单价格
     ).reset_index()
 
     # 给不同活动类型赋值
-    member_monthly_analysis['member_activity'] = member_monthly_analysis['total_orders'].apply(classify_member_activity)
+    member_monthly_analysis['用户消费频率'] = member_monthly_analysis['总订单数'].apply(classify_member_activity)
 
     # 按照每个月和不同会员活动类型统计
-    member_activity_monthly_analysis = member_monthly_analysis.groupby(['订单月份', 'member_activity']).agg(
-        total_orders=('total_orders', 'sum'),
-        total_revenue=('total_revenue', 'sum'),
-        avg_order_quantity=('avg_order_quantity', 'mean'),
-        avg_revenue=('avg_revenue', 'mean'),
-        avg_order_price=('avg_order_price', 'mean')
+    member_activity_monthly_analysis = member_monthly_analysis.groupby(['订单月份', '用户消费频率']).agg(
+        总订单数=('总订单数', 'sum'),          # 修改为中文：总订单数
+        总收入=('总收入', 'sum'),             # 修改为中文：总收入
+        平均订单数量=('平均订单数量', 'mean'), # 修改为中文：平均订单数量
+        平均收入=('平均收入', 'mean'),        # 修改为中文：平均收入
+        平均订单价格=('平均订单价格', 'mean') # 修改为中文：平均订单价格
     ).reset_index()
 
     member_activity_monthly_analysis['订单月份'] = member_activity_monthly_analysis['订单月份'].astype(str)
