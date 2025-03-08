@@ -3,6 +3,8 @@ backup/
 
 backup_250307/
 
+static/
+
 # 忽略所有 __pycache__ 文件夹
 __pycache__/
 
