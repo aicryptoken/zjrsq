@@ -4,6 +4,7 @@ from pandas import Timestamp, Period
 from typing import Dict, Tuple
 import numpy as np
 from datetime import timedelta
+import json
 
 def connect_to_db(db_path: str) -> sqlite3.Connection:
     """Efficiently connect to SQLite database"""
@@ -77,15 +78,30 @@ def calculate_user_metrics(orders_df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Da
 
 def analyze_space_utilization(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     """空间利用率优化分析"""
-    space_df['使用率'] = (space_df['实际时长'] / space_df['预定时长']) * 100
-    space_df['是否高效使用'] = (space_df['使用率'] >= 90).astype(int)
+    # 使用 np.where 避免除以零，NaN 保留为 None
+    space_df['使用率'] = np.where(
+        space_df['预定时长'] == 0, 
+        None,  # 除以零时返回 None，而不是 0
+        (space_df['实际时长'] / space_df['预定时长']) * 100
+    )
+    space_df['是否高效使用'] = space_df['使用率'].apply(lambda x: 1 if pd.notna(x) and x >= 90 else 0)
 
     peak_analysis = space_df.groupby('开始使用时刻').agg({
         '订单编号': 'count',
         '实付金额': 'sum'
     }).reset_index()
-    peak_analysis['收入占比'] = peak_analysis['实付金额'] / peak_analysis['实付金额'].sum() * 100
-    peak_analysis['订单占比'] = peak_analysis['订单编号'] / peak_analysis['订单编号'].sum() * 100
+    total_revenue = peak_analysis['实付金额'].sum()
+    peak_analysis['收入占比'] = np.where(
+        total_revenue == 0, 
+        None, 
+        peak_analysis['实付金额'] / total_revenue * 100
+    )
+    total_orders = peak_analysis['订单编号'].sum()
+    peak_analysis['订单占比'] = np.where(
+        total_orders == 0, 
+        None, 
+        peak_analysis['订单编号'] / total_orders * 100
+    )
 
     space_df['是否首单'] = (space_df.groupby('会员号')['创建时间'].transform('rank', method='first') == 1).astype(int)
     purchase_comparison = space_df.groupby('是否首单').agg({
@@ -107,7 +123,11 @@ def analyze_order_optimization(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame
         '订单编号': 'count', 
         '实付金额': 'mean'
     }).reset_index()
-    overtime_analysis['加钟率'] = overtime_analysis['是否加钟'] / overtime_analysis['订单编号'] * 100
+    overtime_analysis['加钟率'] = np.where(
+        overtime_analysis['订单编号'] == 0, 
+        None, 
+        overtime_analysis['是否加钟'] / overtime_analysis['订单编号'] * 100
+    )
 
     return {
         '2-加钟分析': overtime_analysis
@@ -159,8 +179,8 @@ def analyze_users(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     customer_analysis.columns = ['订单数', '首次消费时间', '最后消费时间', '总消费金额']
     customer_analysis = customer_analysis.reset_index()
     customer_analysis['消费间隔'] = (customer_analysis['最后消费时间'] - customer_analysis['首次消费时间']).dt.days
-    customer_analysis['首次消费时间'] = customer_analysis['首次消费时间'].fillna('未知').astype(str)
-    customer_analysis['最后消费时间'] = customer_analysis['最后消费时间'].fillna('未知').astype(str)
+    customer_analysis['首次消费时间'] = customer_analysis['首次消费时间'].astype(str)
+    customer_analysis['最后消费时间'] = customer_analysis['最后消费时间'].astype(str)
     customer_analysis['用户消费次数'] = customer_analysis['订单数'].apply(categorize_customers)
 
     customer_tier_analysis = customer_analysis.groupby('用户消费次数').agg({
@@ -178,8 +198,8 @@ def analyze_users(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     }).reset_index()
     lifecycle.columns = ['会员号', '首次创建时间', '最后创建时间', '总实付金额', '订单数']
     lifecycle['时间跨度'] = (lifecycle['最后创建时间'] - lifecycle['首次创建时间']).dt.days
-    lifecycle['首次创建时间'] = lifecycle['首次创建时间'].fillna('未知').astype(str)
-    lifecycle['最后创建时间'] = lifecycle['最后创建时间'].fillna('未知').astype(str)
+    lifecycle['首次创建时间'] = lifecycle['首次创建时间'].astype(str)
+    lifecycle['最后创建时间'] = lifecycle['最后创建时间'].astype(str)
 
     lifecycle_10_plus = lifecycle[lifecycle['订单数'] > 10]
     lifecycle_6_10 = lifecycle[lifecycle['订单数'].between(6, 10, inclusive='both')]
@@ -225,7 +245,7 @@ def analyze_upgrades(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     })
     upgrade_analysis['未升舱订单数'] = upgrade_analysis['订单编号'] - upgrade_analysis['升舱订单数']
     
-    upgrade_analysis = upgrade_analysis.fillna(0)
+    # 不填充为 0，保留 NaN 转为 None
     upgrade_analysis = upgrade_analysis[['月份', '未升舱订单数', '升舱订单数', '未升舱金额', '升舱金额']]
     upgrade_analysis['月份'] = upgrade_analysis['月份'].astype(str)
     
@@ -256,7 +276,7 @@ def analyze_space_types(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
         space_type = df['订单商品名'].iloc[0]
         daily_hours = 17 if isinstance(space_type, str) and '心流舱' in space_type else 11
         total_hours = df['实际时长'].sum()
-        return (total_hours / (daily_hours * 7)) * 100  # 按周计算，7天
+        return None if daily_hours == 0 else (total_hours / (daily_hours * 7)) * 100  # 避免除以零
 
     results = {}
     for metric in ['订单数', '总收入', '总使用时长', '平均使用时长', '利用率']:
@@ -280,7 +300,7 @@ def analyze_space_types(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
         results[f'7-空间类型分析-{metric}'] = df.pivot(index='周', columns='空间类型', values=metric).reset_index().rename_axis(None, axis=1)
 
     hourly_utilization = space_df.groupby(['booking_week', '开始使用时刻']).apply(
-        lambda x: (x['实际时长'].sum() / (17 if '心流舱' in x['订单商品名'].iloc[0] else 11) / 7) * 100
+        lambda x: None if (17 if '心流舱' in x['订单商品名'].iloc[0] else 11) == 0 else (x['实际时长'].sum() / (17 if '心流舱' in x['订单商品名'].iloc[0] else 11) / 7) * 100
     ).reset_index(name='有效使用率')
     hourly_utilization['booking_week'] = hourly_utilization['booking_week'].astype(str)
     hourly_utilization_pivot = hourly_utilization.pivot(index='booking_week', columns='开始使用时刻', values='有效使用率').reset_index().rename_axis(None, axis=1)
@@ -291,7 +311,7 @@ def analyze_space_types(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     weekday_order = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日']
     space_df['booking_month'] = space_df['创建时间'].dt.to_period('M')
     weekly_day_utilization = space_df.groupby(['booking_month', 'weekday']).apply(
-        lambda x: (x['实际时长'].sum() / (17 if '心流舱' in x['订单商品名'].iloc[0] else 11) / len(x['创建时间'].dt.date.unique())) * 100
+        lambda x: None if len(x['创建时间'].dt.date.unique()) == 0 else (x['实际时长'].sum() / (17 if '心流舱' in x['订单商品名'].iloc[0] else 11) / len(x['创建时间'].dt.date.unique())) * 100
     ).reset_index(name='有效使用率')
     weekly_day_utilization['booking_month'] = weekly_day_utilization['booking_month'].astype(str)
     weekly_day_pivot = weekly_day_utilization.pivot(index='booking_month', columns='weekday', values='有效使用率').reset_index().rename_axis(None, axis=1)
@@ -307,20 +327,22 @@ def convert_keys_to_str(data):
     elif isinstance(data, list):
         return [convert_keys_to_str(item) for item in data]
     return data
-    
+
 def convert_df_to_dict(data):
     if isinstance(data, pd.DataFrame):
         df = data.copy()
+        # 处理时间类型列
         for col in df.columns:
             if pd.api.types.is_datetime64_any_dtype(df[col]) or pd.api.types.is_period_dtype(df[col]):
-                df[col] = df[col].fillna('未知').astype(str)
-        return df.to_dict(orient='records')
+                df[col] = df[col].astype(str)
+        # 将 NaN 替换为 None，确保 JSON 中为 null
+        return df.replace({np.nan: None}).to_dict(orient='records')
     elif isinstance(data, dict):
         return {k: convert_df_to_dict(v) for k, v in data.items()}
     elif isinstance(data, list):
         return [convert_df_to_dict(item) for item in data]
     elif isinstance(data, (pd.Timestamp, pd.Period)) or pd.isna(data):
-        return str(data) if not pd.isna(data) else '未知'
+        return str(data) if not pd.isna(data) else None
     return data
 
 def analyze(conn):
@@ -333,6 +355,7 @@ def analyze(conn):
         space_df = space_df[space_df['等级'] != 0]
         space_df['订单商品名'] = space_df['订单商品名'].fillna('').str.replace('上海洛克外滩店-', '').str.replace('the Box', '')
 
+        # 预处理数据，不填充数值列的 NaN，保留为 None
         space_df = preprocess_datetime(space_df)
         space_df['booking_month'] = space_df['创建时间'].dt.to_period('M')
         space_df['开始使用时刻'] = pd.to_datetime(space_df['预定开始时间'], errors='coerce').dt.hour
