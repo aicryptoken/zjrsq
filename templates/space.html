@@ -14,6 +14,7 @@
         <a href="/catering">餐饮分析</a> |
         <a href="/space">场景分析</a>
     </nav>
+    <p><small>注：<br>周度数据以周一开始统计。</small></p>
     <div class="tab-container">
         <div class="tab-buttons">
             {% set first = true %}
@@ -37,15 +38,17 @@
                         <label>
                             <input type="checkbox" class="chart-toggle" checked> 显示图表
                         </label>
-                        <select class="column-select">
-                            {% if value and value[0]|length > 1 %}
-                                {% for col in value[0].keys() %}
-                                    {% if not loop.first %}
-                                        <option value="{{ loop.index0 }}">{{ col }}</option>
-                                    {% endif %}
-                                {% endfor %}
-                            {% endif %}
-                        </select>
+                        {% if not key.endswith('_stacked') %}
+                            <select class="column-select">
+                                {% if value and value[0]|length > 1 %}
+                                    {% for col in value[0].keys() %}
+                                        {% if not loop.first %}
+                                            <option value="{{ loop.index0 }}">{{ col }}</option>
+                                        {% endif %}
+                                    {% endfor %}
+                                {% endif %}
+                            </select>
+                        {% endif %}
                     </div>
                     <div class="chart-container" id="chart-container-{{ category|replace(' ', '_') }}-{{ key|replace(' ', '_') }}">
                         <canvas id="chart-{{ category|replace(' ', '_') }}-{{ key|replace(' ', '_') }}"></canvas>
@@ -87,261 +90,7 @@
         <p>Copyright © 2025</p>
     </footer>
 
-    <script>
-        const charts = {};
+    <script src="{{ url_for('static', filename='charts.js') }}"></script>
 
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log('DOM loaded');
-            
-            // 确保首个标签页激活
-            document.querySelector('.tab-content').classList.add('active');
-            document.querySelector('.tab-button').classList.add('active');
-
-            // 标签切换监听
-            document.querySelectorAll('.tab-button').forEach(button => {
-                button.addEventListener('click', function(event) {
-                    const tabName = this.getAttribute('data-tab');
-                    openTab(event, tabName);
-                });
-            });
-
-            console.log('Starting chart creation');
-            // 创建初始图表
-            setTimeout(function() {
-                // 初始化下拉菜单默认值为第一个选项（第二列）
-                document.querySelectorAll('.column-select').forEach(select => {
-                    if (select.options.length > 0) {
-                        select.selectedIndex = 0;
-                    }
-                });
-                createAllCharts();
-            }, 100); // 延迟执行以确保DOM完全加载
-
-            // 表格显示切换监听
-            document.querySelectorAll('.table-toggle').forEach(toggle => {
-                toggle.addEventListener('change', function() {
-                    const controlId = this.closest('.control-area').id;
-                    const tableContainer = document.getElementById('table-' + controlId.replace('control-', '')).closest('.table-container');
-                    tableContainer.style.display = this.checked ? 'block' : 'none';
-                });
-            });
-
-            // 图表显示切换监听
-            document.querySelectorAll('.chart-toggle').forEach(toggle => {
-                toggle.addEventListener('change', function() {
-                    const controlId = this.closest('.control-area').id;
-                    const chartId = 'chart-container-' + controlId.replace('control-', '');
-                    const chartContainer = document.getElementById(chartId);
-                    chartContainer.style.display = this.checked ? 'block' : 'none';
-                    
-                    // 触发图表重绘以确保正确显示
-                    if (this.checked && charts[chartId.replace('container-', '')]) {
-                        setTimeout(() => {
-                            charts[chartId.replace('container-', '')].resize();
-                        }, 50);
-                    }
-                });
-            });
-
-            // 列选择变化监听
-            document.querySelectorAll('.column-select').forEach(select => {
-                select.addEventListener('change', function() {
-                    const controlId = this.closest('.control-area').id;
-                    const tableId = 'table-' + controlId.replace('control-', '');
-                    const chartId = 'chart-' + controlId.replace('control-', '');
-                    console.log('Column selected:', this.value);
-                    updateChart(tableId, chartId, parseInt(this.value));
-                });
-            });
-
-            // 窗口大小变化时重绘图表
-            window.addEventListener('resize', function() {
-                Object.values(charts).forEach(chart => {
-                    if (chart) chart.resize();
-                });
-            });
-        });
-
-        function openTab(evt, tabName) {
-            var i, tabcontent, tabbuttons;
-            
-            // 隐藏所有标签内容
-            tabcontent = document.getElementsByClassName("tab-content");
-            for (i = 0; i < tabcontent.length; i++) {
-                tabcontent[i].classList.remove("active");
-            }
-            
-            // 移除所有按钮的激活状态
-            tabbuttons = document.getElementsByClassName("tab-button");
-            for (i = 0; i < tabbuttons.length; i++) {
-                tabbuttons[i].classList.remove("active");
-            }
-            
-            // 显示当前标签内容并设置按钮为激活状态
-            document.getElementById(tabName).classList.add("active");
-            evt.currentTarget.classList.add("active");
-            
-            // 重绘当前标签页中的图表
-            setTimeout(() => {
-                document.querySelectorAll(`#${tabName} canvas`).forEach(canvas => {
-                    const chartId = canvas.id;
-                    if (charts[chartId]) {
-                        charts[chartId].resize();
-                    }
-                });
-            }, 50);
-        }
-
-        function createAllCharts() {
-            document.querySelectorAll('.data-table').forEach(table => {
-                const tableId = table.id;
-                const chartId = tableId.replace('table', 'chart');
-                const chartCanvas = document.getElementById(chartId);
-                const columnSelect = document.getElementById(tableId.replace('table', 'control')).querySelector('.column-select');
-                
-                if (chartCanvas && columnSelect && columnSelect.options.length > 0) {
-                    console.log('Creating chart for:', chartId);
-                    updateChart(tableId, chartId, parseInt(columnSelect.value));
-                } else {
-                    console.error('Chart canvas not found or no columns available for:', chartId);
-                }
-            });
-        }
-
-        function updateChart(tableId, chartId, columnIndex) {
-            const table = document.getElementById(tableId);
-            const chartCanvas = document.getElementById(chartId);
-            const titleElement = document.getElementById('title-' + tableId.replace('table-', ''));
-
-            if (!table || !chartCanvas) {
-                console.error('Table or canvas not found:', tableId, chartId);
-                return;
-            }
-
-            if (!titleElement) {
-                console.error('Title element not found for:', tableId);
-                return;
-            }
-
-            // 提取表格数据
-            const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.textContent);
-            const rows = Array.from(table.querySelectorAll('tbody tr'));
-            const data = rows.map(row => {
-                return Array.from(row.querySelectorAll('td')).map(td => td.textContent);
-            });
-
-            console.log('Table data:', data);
-
-            // 准备图表数据
-            const labels = data.map(row => row[0]);
-            const values = data.map(row => {
-                const value = row[columnIndex];
-                return isNaN(parseFloat(value)) ? 0 : parseFloat(value);
-            });
-
-            console.log('Labels:', labels);
-            console.log('Values:', values);
-
-            // 如果已有图表，先销毁
-            if (charts[chartId]) {
-                charts[chartId].destroy();
-            }
-
-            // 创建颜色数组，使图表更美观
-            const backgroundColors = values.map((val, idx) => {
-                const hue = 200; // 蓝色系
-                const saturation = 70;
-                const lightness = Math.max(40, 85 - (val / Math.max(...values) * 45)); // 值越大，颜色越深
-                return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
-            });
-
-            try {
-                // 创建新图表
-                charts[chartId] = new Chart(chartCanvas, {
-                    type: 'bar',
-                    data: {
-                        labels: labels,
-                        datasets: [{
-                            label: headers[columnIndex],
-                            data: values,
-                            backgroundColor: backgroundColors,
-                            borderColor: 'rgba(54, 162, 235, 1)',
-                            borderWidth: 1
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                max: Math.max(...values) * 1.1, // 动态设置 Y 轴最大值
-                                ticks: {
-                                    callback: function(value) {
-                                        // 对大数字使用千位分隔符，对小数保留两位小数
-                                        if (value >= 1000) {
-                                            return value.toLocaleString();
-                                        } else {
-                                            return value.toFixed(2);
-                                        }
-                                    },
-                                    font: {
-                                        size: 11 // 调整字体大小，避免拥挤
-                                    }
-                                }
-                            },
-                            x: {
-                                ticks: {
-                                    maxRotation: 90, // 垂直显示标签
-                                    minRotation: 90,
-                                    font: {
-                                        size: 11 // 调整字体大小
-                                    }
-                                }
-                            }
-                        },
-                        plugins: {
-                            legend: {
-                                display: false // 不显示图例
-                            },
-                            title: {
-                                display: true,
-                                text: titleElement.textContent,
-                                font: {
-                                    size: 16,
-                                    weight: 'bold'
-                                },
-                                padding: {
-                                    top: 10,
-                                    bottom: 20
-                                }
-                            },
-                            tooltip: {
-                                callbacks: {
-                                    label: function(context) {
-                                        // 在提示框中显示更精确的数值
-                                        let label = context.dataset.label || '';
-                                        if (label) {
-                                            label += ': ';
-                                        }
-                                        if (context.parsed.y !== null) {
-                                            label += context.parsed.y.toLocaleString(undefined, {
-                                                minimumFractionDigits: 2,
-                                                maximumFractionDigits: 2
-                                            });
-                                        }
-                                        return label;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                });
-                console.log('Chart created successfully for:', chartId);
-            } catch (error) {
-                console.error('Error creating chart:', error);
-            }
-        }
-    </script>
 </body>
 </html>

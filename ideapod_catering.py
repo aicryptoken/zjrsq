@@ -25,69 +25,88 @@ def financial_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     """
     catering_df = preprocess_datetime(catering_df)
     
-    catering_df['订单周'] = catering_df['下单时间'].dt.to_period('W-MON')
+    # 添加时间维度
+    catering_df['订单周'] = catering_df['下单时间'].dt.to_period('W-MON').apply(lambda x: x.start_time.date())
     catering_df['订单月份'] = catering_df['下单时间'].dt.to_period('M')
-    catering_df['星期'] = catering_df['下单时间'].dt.day_name()
+    catering_df['星期'] = catering_df['下单时间'].dt.day_name()  # 英文星期
     catering_df['订单时刻'] = catering_df['下单时间'].dt.hour
 
+    # 周度收入分析
     weekly_revenue_df = catering_df.groupby('订单周').agg(
-        消费总金额=('实收', 'sum'),
-        订单数量=('订单号', 'count'),
+        销售收入=('实收', 'sum'),
+        订单量=('订单号', 'count'),
         订单单价=('实收', 'mean')
     ).reset_index()
     weekly_revenue_df['订单周'] = weekly_revenue_df['订单周'].astype(str)
 
-    weekday_sales = catering_df.groupby(['订单月份', '星期']).agg(
-        日均销售金额=('实收', 'mean')
+    # 定义星期顺序（英文转中文）
+    weekday_order_en = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    weekday_order_cn = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+
+    # 周内收入分布
+    weekday_sales = catering_df.groupby(['订单月份', '星期', catering_df['下单时间'].dt.date]).agg(
+        日销售金额=('实收', 'sum')  # 先按天汇总
+    ).reset_index().groupby(['订单月份', '星期']).agg(
+        日均销售金额=('日销售金额', 'mean')  # 再取日均值
     ).unstack(fill_value=0)
-    weekday_sales.columns = [col[1] for col in weekday_sales.columns]
-    weekday_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-    weekday_sales = weekday_sales.reindex(columns=weekday_order).reset_index()
+    weekday_sales.columns = [weekday_order_cn[weekday_order_en.index(col[1])] for col in weekday_sales.columns]  # 转换为中文
+    weekday_sales = weekday_sales.reindex(columns=weekday_order_cn, fill_value=0).reset_index()
     weekday_sales['订单月份'] = weekday_sales['订单月份'].astype(str)
 
-    weekday_orders = catering_df.groupby(['订单月份', '星期']).agg(
-        日均订单数量=('订单号', 'count')
+    # 周内单量分布
+    weekday_orders = catering_df.groupby(['订单月份', '星期', catering_df['下单时间'].dt.date]).agg(
+        日订单数量=('订单号', 'count')  # 先按天计数
+    ).reset_index().groupby(['订单月份', '星期']).agg(
+        日均订单数量=('日订单数量', 'mean')  # 再取日均值
     ).unstack(fill_value=0)
-    weekday_orders.columns = [col[1] for col in weekday_orders.columns]
-    weekday_orders = weekday_orders.reindex(columns=weekday_order).reset_index()
+    weekday_orders.columns = [weekday_order_cn[weekday_order_en.index(col[1])] for col in weekday_orders.columns]  # 转换为中文
+    weekday_orders = weekday_orders.reindex(columns=weekday_order_cn, fill_value=0).reset_index()
     weekday_orders['订单月份'] = weekday_orders['订单月份'].astype(str)
 
-    hourly_sales = catering_df.groupby(['订单月份', '订单时刻']).agg(
-        日均销售金额=('实收', 'mean')
+    # 日内收入分布
+    hourly_sales = catering_df.groupby(['订单月份', '订单时刻', catering_df['下单时间'].dt.date]).agg(
+        日销售金额=('实收', 'sum')  # 先按天汇总
+    ).reset_index().groupby(['订单月份', '订单时刻']).agg(
+        日均销售金额=('日销售金额', 'mean')  # 再取日均值
     ).unstack(fill_value=0)
     hourly_sales.columns = [f'{int(col[1])}时' for col in hourly_sales.columns]
     hourly_sales = hourly_sales.reset_index()
     hourly_sales['订单月份'] = hourly_sales['订单月份'].astype(str)
 
-    hourly_orders = catering_df.groupby(['订单月份', '订单时刻']).agg(
-        日均订单数量=('订单号', 'count')
+    # 日内单量分布
+    hourly_orders = catering_df.groupby(['订单月份', '订单时刻', catering_df['下单时间'].dt.date]).agg(
+        日订单数量=('订单号', 'count')  # 先按天计数
+    ).reset_index().groupby(['订单月份', '订单时刻']).agg(
+        日均订单数量=('日订单数量', 'mean')  # 再取日均值
     ).unstack(fill_value=0)
     hourly_orders.columns = [f'{int(col[1])}时' for col in hourly_orders.columns]
     hourly_orders = hourly_orders.reset_index()
     hourly_orders['订单月份'] = hourly_orders['订单月份'].astype(str)
 
     return {
-        '1 - 周度实收金额': weekly_revenue_df,
-        '1 - 周内销售金额': weekday_sales,
-        '1 - 周内销售订单': weekday_orders,
-        '1 - 时间段销售金额': hourly_sales,
-        '1 - 时间段订单数量': hourly_orders
+        '销售收入_bar': weekly_revenue_df,
+        '周内收入分布_stacked': weekday_sales,
+        '周内单量分布_stacked': weekday_orders,
+        '日内收入分布_stacked': hourly_sales,
+        '日内单量分布_stacked': hourly_orders
     }
 
 def order_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     """
-    订单分析：仅保留订单来源分析，按周拆分为销售金额和订单数量
+    订单分析：仅保留订单来源分析，按周拆分为销售金额、订单数量和订单单价
     """
     catering_df = preprocess_datetime(catering_df)
-    catering_df['订单周'] = catering_df['下单时间'].dt.to_period('W-MON')
+    catering_df['订单周'] = catering_df['下单时间'].dt.to_period('W-MON').apply(lambda x: x.start_time.date())
 
+    # 销售收入分析
     source_sales = catering_df.groupby(['订单周', '订单来源']).agg(
-        消费总金额=('实收', 'sum')
+        销售收入=('实收', 'sum')
     ).unstack(fill_value=0)
     source_sales.columns = [col[1] for col in source_sales.columns]
     source_sales = source_sales.reset_index()
     source_sales['订单周'] = source_sales['订单周'].astype(str)
 
+    # 订单数量分析
     source_orders = catering_df.groupby(['订单周', '订单来源']).agg(
         订单数量=('订单号', 'count')
     ).unstack(fill_value=0)
@@ -95,9 +114,17 @@ def order_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     source_orders = source_orders.reset_index()
     source_orders['订单周'] = source_orders['订单周'].astype(str)
 
+    # 订单单价分析（销售收入/订单数量）
+    source_price = source_sales.copy()
+    order_cols = [col for col in source_orders.columns if col != '订单周']
+    for col in order_cols:
+        source_price[col] = source_sales[col] / source_orders[col].replace(0, np.nan)  # 避免除以0
+    source_price = source_price.fillna(0)  # 将NaN值填充为0
+
     return {
-        '2 - 按订单来源分销售金额': source_sales,
-        '2 - 按订单来源分订单数量': source_orders
+        '销售收入_来源_bar': source_sales,
+        '订单量_来源_bar': source_orders,
+        '订单单价_来源_bar': source_price
     }
 
 def product_analysis(catering_df: pd.DataFrame, conn) -> dict:
@@ -133,7 +160,7 @@ def product_analysis(catering_df: pd.DataFrame, conn) -> dict:
     product_sales = product_sales[product_sales['基础产品'].isin(top_products)]
     
     # 添加周标识
-    product_sales['订单周'] = product_sales['订单日期'].dt.to_period('W-MON')
+    product_sales['订单周'] = product_sales['订单日期'].dt.to_period('W-MON').apply(lambda x: x.start_time.date())
     
     # 按周和基础产品统计销售数量
     weekly_product_sales = product_sales.groupby(['订单周', '基础产品']).agg(
@@ -144,7 +171,7 @@ def product_analysis(catering_df: pd.DataFrame, conn) -> dict:
     weekly_product_sales['订单周'] = weekly_product_sales['订单周'].astype(str)
 
     return {
-        '3 - 产品周度销售分析': weekly_product_sales
+        '产品销售量_bar': weekly_product_sales
     }
 
 def marketing_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
@@ -155,14 +182,14 @@ def marketing_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
 
     promotion_analysis = catering_df.groupby(['订单月份', '促销类型']).agg(
         订单总数=('订单号', 'count'),
-        消费总金额=('实收', 'sum'),
+        销售收入=('实收', 'sum'),
         平均折扣=('打折', 'mean'),
         总折扣金额=('打折', 'sum')
     ).reset_index()
     promotion_analysis['订单月份'] = promotion_analysis['订单月份'].astype(str)
 
     return {
-        '4- 促销优惠分析': promotion_analysis
+        '促销优惠分析（数据有误）_bar': promotion_analysis
     }
 
 def user_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
@@ -170,7 +197,7 @@ def user_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     用户分析：改为周度数据，拆分为总订单数量、总收入、平均订单价格三个表
     """
     catering_df = preprocess_datetime(catering_df)
-    catering_df['订单周'] = catering_df['下单时间'].dt.to_period('W-MON')
+    catering_df['订单周'] = catering_df['下单时间'].dt.to_period('W-MON').apply(lambda x: x.start_time.date())
     catering_df['member_id'] = np.where(
         catering_df['会员号'].isna(),
         catering_df.index.map(lambda x: f'8888000{x:04d}'),
@@ -220,9 +247,9 @@ def user_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     weekly_avg_price['订单周'] = weekly_avg_price['订单周'].astype(str)
 
     return {
-        '5 - 会员周度总订单数量': weekly_orders,
-        '5 - 会员周度总收入': weekly_revenue,
-        '5 - 会员周度平均订单价格': weekly_avg_price
+        '订单量_会员等级_bar': weekly_orders,
+        '收入_会员等级_bar': weekly_revenue,
+        '订单单价_会员等级_bar': weekly_avg_price
     }
 
 def analyze(conn):
