@@ -193,7 +193,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         const tableId = 'table-' + controlId.replace('control-', '');
                         const chartId = 'chart-' + controlId.replace('control-', '');
                         console.log('Column selected:', this.value);
-                        updateChart(tableId, chartId, parseInt(this.value));
+                        updateChart(tableId, chartId, this.value);
                     });
                 }
             });
@@ -347,7 +347,7 @@ function updateChart(tableId, chartId, columnIndex) {
         // 普通柱状图
         const labels = data.map(row => row[0]);
         const values = data.map(row => {
-            const value = row[columnIndex + 1]; // +1 因为第一列是标签
+            const value = row[columnIndex];
             return isNaN(parseFloat(value)) ? 0 : parseFloat(value);
         });
         
@@ -367,7 +367,7 @@ function updateChart(tableId, chartId, columnIndex) {
             data: {
                 labels: labels,
                 datasets: [{
-                    label: headers[columnIndex + 1], // +1 因为第一列是标签
+                    label: headers[columnIndex], 
                     data: values,
                     backgroundColor: backgroundColors,
                     borderColor: 'rgba(54, 162, 235, 1)',

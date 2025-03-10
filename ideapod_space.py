@@ -128,7 +128,7 @@ def analyze_order_optimization(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame
         columns='订单商品名',
         aggfunc='count',
         fill_value=0
-    )
+    ).reset_index()
     
     overtime_duration = pd.pivot_table(
         space_df[space_df['加钟数'] > 0],
@@ -137,7 +137,7 @@ def analyze_order_optimization(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame
         columns='订单商品名',
         aggfunc='sum',
         fill_value=0
-    )
+    ).reset_index()
     
     # 3. 平均每次加钟时长表
     avg_overtime_duration = pd.pivot_table(
@@ -147,7 +147,7 @@ def analyze_order_optimization(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame
         columns='订单商品名',
         aggfunc='mean',
         fill_value=0
-    )
+    ).reset_index()
 
     # 4. 加钟收入总计表（假设加钟收入包含在实付金额中且与加钟相关）
     overtime_revenue = pd.pivot_table(
@@ -157,7 +157,7 @@ def analyze_order_optimization(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame
         columns='订单商品名',
         aggfunc='sum',
         fill_value=0
-    )
+    ).reset_index()
     
     return {
         '加钟次数表_bar': overtime_count,
@@ -189,7 +189,7 @@ def analyze_member_value(space_df: pd.DataFrame, db_path: str) -> Dict[str, pd.D
         index='月份',  # 行是月份
         columns='等级',  # 列是等级
         fill_value=0
-    )
+    ).reset_index()
 
     # 总收入表
     total_revenue_table = pd.pivot_table(
@@ -198,7 +198,7 @@ def analyze_member_value(space_df: pd.DataFrame, db_path: str) -> Dict[str, pd.D
         index='月份',  # 行是月份
         columns='等级',  # 列是等级
         fill_value=0
-    )
+    ).reset_index()
 
     # 订单量表
     order_volume_table = pd.pivot_table(
@@ -207,7 +207,7 @@ def analyze_member_value(space_df: pd.DataFrame, db_path: str) -> Dict[str, pd.D
         index='月份',  # 行是月份
         columns='等级',  # 列是等级
         fill_value=0
-    )
+    ).reset_index()
 
     # 独立会员数量表
     unique_members_table = pd.pivot_table(
@@ -216,7 +216,7 @@ def analyze_member_value(space_df: pd.DataFrame, db_path: str) -> Dict[str, pd.D
         index='月份',  # 行是月份
         columns='等级',  # 列是等级
         fill_value=0
-    )
+    ).reset_index()
     # 计算用户留存与流失率
     retention_churn_df = result_df.copy()
     
@@ -457,7 +457,7 @@ def analyze(conn):
         space_df['等级'] = space_df['等级'].astype(str)
         space_df['等级'] = space_df['等级'].fillna('未注册用户')
         space_df['等级'] = space_df['等级'].replace({'2.0': '关联户', '1.0': '微信注册用户', 'nan': '未注册用户'})
-        space_df = space_df[space_df['等级'] != '0']
+        space_df = space_df[space_df['等级'] != '0.0']
 
         space_df['订单商品名'] = space_df['订单商品名'].fillna('').str.replace('上海洛克外滩店-', '').str.replace('the Box', '')
         space_df['订单商品名'] = space_df['订单商品名'].apply(
