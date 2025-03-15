@@ -115,12 +115,12 @@ def analyze_order(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     ).reset_index()
     
     return {
-        '升舱订单数_bar': upgrade_count,
-        '升舱金额_bar': upgrade_amount,
-        '升舱订单占比_bar': upgrade_ratio,
-        '加钟收入分析_bar': overtime_revenue,
-        '加钟时长分析_bar': overtime_duration,
-        '预约分析_bar': booking_analysis
+        '月升舱订单数_bar': upgrade_count,
+        '月升舱金额_bar': upgrade_amount,
+        '月升舱订单占比_bar': upgrade_ratio,
+        '月加钟收入_bar': overtime_revenue,
+        '月加钟总时长_bar': overtime_duration,
+        '预约订单占比_bar': booking_analysis
     }
 
 
@@ -191,7 +191,7 @@ def analyze_member(member_df: pd.DataFrame, db_path: str) -> Dict[str, pd.DataFr
     avg_revenue_table = pd.pivot_table(monthly_level_stats, values='平均收入', index='月份', columns='等级', fill_value=0).reset_index()
     total_revenue_table = pd.pivot_table(monthly_level_stats, values='总收入', index='月份', columns='等级', fill_value=0).reset_index()
     order_volume_table = pd.pivot_table(monthly_level_stats, values='订单量', index='月份', columns='等级', fill_value=0).reset_index()
-    unique_members_table = pd.pivot_table(monthly_level_stats, values='独立会员数量', index='月份', columns='等级', fill_value=0).reset_index()
+    
     
     # 计算一个月留存率、回购率及流失率
     rates_df = pd.DataFrame({'booking_month': counts_df['booking_month']})
@@ -217,12 +217,11 @@ def analyze_member(member_df: pd.DataFrame, db_path: str) -> Dict[str, pd.DataFr
     
     # 返回结果字典
     return {
+        '用户留存与流失_bar': counts_df,
+        '用户留存与流失率_bar': rates_df,
         '每月平均收入_bar': avg_revenue_table,
         '每月总收入_bar': total_revenue_table,
-        '每月订单量_bar': order_volume_table,
-        '每月独立会员数量_bar': unique_members_table,
-        '用户留存与流失_bar': counts_df,
-        '用户留存与流失率_bar': rates_df
+        '每月订单量_bar': order_volume_table
     }
 
 
@@ -243,17 +242,39 @@ def analyze_users(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     # 重命名列
     rfm_analysis.columns = ['会员号', '最近消费时间', '总消费金额', '消费次数']
     rfm_analysis['Recency'] = (today - rfm_analysis['最近消费时间']).dt.days
-    # 计算指数: e^(-λ * Recency), λ=0.015
+    # 计算最近购买时间指数: e^(-λ * Recency), λ=0.015
     lambda_param = 0.015
     rfm_analysis['最近购买时间指数'] = np.exp(-lambda_param * rfm_analysis['Recency'])
     
-    # 2. 计算Monetary指数
-    rfm_analysis['消费力指数'] = np.log(rfm_analysis['总消费金额'] + 1)
+    # 计算原始的消费力和消费频率指数
+    rfm_analysis['monetary_raw'] = np.log(rfm_analysis['总消费金额'] + 1)
+    rfm_analysis['frequency_raw'] = np.log(1 + rfm_analysis['消费次数'])
     
-    # 3. 计算Frequency指数
-    rfm_analysis['消费频率指数'] = np.log(1 + rfm_analysis['消费次数'])
+    # 进行min-max标准化
+    monetary_min = rfm_analysis['monetary_raw'].min()
+    monetary_max = rfm_analysis['monetary_raw'].max()
+    frequency_min = rfm_analysis['frequency_raw'].min()
+    frequency_max = rfm_analysis['frequency_raw'].max()
+    
+    rfm_analysis['消费力指数'] = (
+        (rfm_analysis['monetary_raw'] - monetary_min) / (monetary_max - monetary_min)
+    ) if monetary_max != monetary_min else 0
+    
+    rfm_analysis['消费频率指数'] = (
+        (rfm_analysis['frequency_raw'] - frequency_min) / (frequency_max - frequency_min)
+    ) if frequency_max != frequency_min else 0
+    
+    # 计算user_value
+    weight_monetary = 0.6  # w = 0.6
+    weight_frequency = 1 - weight_monetary  # 1 - w
+    
+    rfm_analysis['用户价值'] = (
+        rfm_analysis['最近购买时间指数'] * 
+        (rfm_analysis['消费力指数'] * weight_monetary + 
+         rfm_analysis['消费频率指数'] * weight_frequency)
+    )
 
-    result = rfm_analysis[['会员号', '最近购买时间指数', '消费力指数', '消费频率指数']]
+    result = rfm_analysis[['会员号', '用户价值' ,'最近购买时间指数', '消费力指数', '消费频率指数']]
     
     return {
         'RFM分析_bar': result
@@ -562,7 +583,7 @@ def analyze(conn):
         space_df['等级'] = space_df['等级'].replace({'2.0': '关联户', '1.0': '微信注册用户', 'nan': '未注册用户'})
         space_df = space_df[space_df['等级'] != '0.0']
 
-        space_df['订单商品名'] = space_df['订单商品名'].fillna('').str.replace('上海洛克外滩店-', '').str.replace('the Box', '')
+        space_df['订单商品名'] = space_df['订单商品名'].fillna('').str.strip().str.replace('上海洛克外滩店-', '').str.replace('the Box', '')
         space_df['订单商品名'] = space_df['订单商品名'].apply(
             lambda x: '图书馆专注区' if x == '图书馆专注' else x
         )

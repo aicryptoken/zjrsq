@@ -2,6 +2,7 @@ import sqlite3
 import pandas as pd
 import numpy as np
 from typing import Dict, Any
+from datetime import timedelta
 
 def connect_to_db(db_path: str) -> sqlite3.Connection:
     """Efficiently connect to SQLite database"""
@@ -122,9 +123,9 @@ def order_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     source_price = source_price.fillna(0)  # 将NaN值填充为0
 
     return {
-        '销售收入_来源_bar': source_sales,
-        '订单量_来源_bar': source_orders,
-        '订单单价_来源_bar': source_price
+        '销售收入_来源_stacked': source_sales,
+        '订单量_来源_stacked': source_orders,
+        '订单单价_来源_stacked': source_price
     }
 
 def product_analysis(catering_df: pd.DataFrame, conn) -> dict:
@@ -194,62 +195,69 @@ def marketing_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
 
 def user_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     """
-    用户分析：改为周度数据，拆分为总订单数量、总收入、平均订单价格三个表
+    用户分析：原来是以周度，将用户按订单次数分类，计算订单数量、总收入、平均订单价格
+    现在修改为基于catering_df计算RFM用户价值
     """
     catering_df = preprocess_datetime(catering_df)
-    catering_df['订单周'] = catering_df['下单时间'].dt.to_period('W-MON').apply(lambda x: x.start_time.date())
+    # catering_df['订单周'] = catering_df['下单时间'].dt.to_period('W-MON').apply(lambda x: x.start_time.date())
     catering_df['member_id'] = np.where(
         catering_df['会员号'].isna(),
         catering_df.index.map(lambda x: f'8888000{x:04d}'),
         catering_df['会员号']
     )
-
-    def classify_member_activity(total_orders):
-        if total_orders == 1:
-            return '1单用户'
-        elif 2 <= total_orders <= 5:
-            return '2-5单用户'
-        elif 6 <= total_orders <= 10:
-            return '5-10单用户'
-        return '>10单用户'
-
-    # 按会员号和周统计订单行为
-    member_weekly_analysis = catering_df.groupby(['member_id', '订单周']).agg(
-        总订单数=('订单号', 'count'),
-        总收入=('实收', 'sum'),
-        平均订单价格=('实收', 'mean')
-    ).reset_index()
-    member_weekly_analysis['用户消费频率'] = member_weekly_analysis['总订单数'].apply(classify_member_activity)
-
-    # 按周和用户消费频率统计，拆分为三个表
-    # 总订单数量
-    weekly_orders = member_weekly_analysis.groupby(['订单周', '用户消费频率']).agg(
-        总订单数=('总订单数', 'sum')
-    ).unstack(fill_value=0)
-    weekly_orders.columns = [col[1] for col in weekly_orders.columns]
-    weekly_orders = weekly_orders.reset_index()
-    weekly_orders['订单周'] = weekly_orders['订单周'].astype(str)
-
-    # 总收入
-    weekly_revenue = member_weekly_analysis.groupby(['订单周', '用户消费频率']).agg(
-        总收入=('总收入', 'sum')
-    ).unstack(fill_value=0)
-    weekly_revenue.columns = [col[1] for col in weekly_revenue.columns]
-    weekly_revenue = weekly_revenue.reset_index()
-    weekly_revenue['订单周'] = weekly_revenue['订单周'].astype(str)
-
-    # 平均订单价格
-    weekly_avg_price = member_weekly_analysis.groupby(['订单周', '用户消费频率']).agg(
-        平均订单价格=('平均订单价格', 'mean')
-    ).unstack(fill_value=0)
-    weekly_avg_price.columns = [col[1] for col in weekly_avg_price.columns]
-    weekly_avg_price = weekly_avg_price.reset_index()
-    weekly_avg_price['订单周'] = weekly_avg_price['订单周'].astype(str)
-
+    # 设置时间范围（过去180天）
+    today = catering_df['下单时间'].max()
+    begin_day = today - timedelta(days=180)  # 统计过去6个月的数据
+    df_filtered = catering_df[catering_df['下单时间'] >= begin_day].copy()
+    
+    # 按会员号聚合计算所需指标
+    rfm_analysis = df_filtered.groupby('member_id').agg({
+        '下单时间': 'max',  # 最近一次下单时间
+        '实收': 'sum',      # 总消费金额
+        '订单号': 'count'   # 消费次数
+    }).reset_index()
+    
+    # 重命名列
+    rfm_analysis.columns = ['会员号', '最近下单时间', '总消费金额', '消费次数']
+    rfm_analysis['Recency'] = (today - rfm_analysis['最近下单时间']).dt.days
+    
+    # 计算最近购买时间指数: e^(-λ * Recency), λ=0.015
+    lambda_param = 0.015
+    rfm_analysis['最近购买时间指数'] = np.exp(-lambda_param * rfm_analysis['Recency'])
+    
+    # 计算原始的消费力和消费频率指数
+    rfm_analysis['monetary_raw'] = np.log(rfm_analysis['总消费金额'] + 1)
+    rfm_analysis['frequency_raw'] = np.log(1 + rfm_analysis['消费次数'])
+    
+    # 进行min-max标准化
+    monetary_min = rfm_analysis['monetary_raw'].min()
+    monetary_max = rfm_analysis['monetary_raw'].max()
+    frequency_min = rfm_analysis['frequency_raw'].min()
+    frequency_max = rfm_analysis['frequency_raw'].max()
+    
+    rfm_analysis['消费力指数'] = (
+        (rfm_analysis['monetary_raw'] - monetary_min) / (monetary_max - monetary_min)
+    ) if monetary_max != monetary_min else 0
+    
+    rfm_analysis['消费频率指数'] = (
+        (rfm_analysis['frequency_raw'] - frequency_min) / (frequency_max - frequency_min)
+    ) if frequency_max != frequency_min else 0
+    
+    # 计算user_value
+    weight_monetary = 0.6  # w = 0.6
+    weight_frequency = 1 - weight_monetary  # 1 - w
+    
+    rfm_analysis['用户价值'] = (
+        rfm_analysis['最近购买时间指数'] * 
+        (rfm_analysis['消费力指数'] * weight_monetary + 
+         rfm_analysis['消费频率指数'] * weight_frequency)
+    )
+    
+    # 选择输出的列
+    result = rfm_analysis[['会员号', '用户价值' ,'最近购买时间指数', '消费力指数', '消费频率指数']]
+    
     return {
-        '订单量_会员等级_bar': weekly_orders,
-        '收入_会员等级_bar': weekly_revenue,
-        '订单单价_会员等级_bar': weekly_avg_price
+        'RFM分析结果': result
     }
 
 def analyze(conn):
@@ -264,10 +272,10 @@ def analyze(conn):
         user_results = user_analysis(catering_df)
 
         all_results = {
-            '财务分析': financial_results,
-            '订单分析': order_results,
-            '商品分析': product_results,
-            '市场分析': marketing_results,
+            '财务数据': financial_results,
+            '订单来源': order_results,
+            '商品销量': product_results,
+            '促销分析': marketing_results,
             '用户分析': user_results,
         }
 
