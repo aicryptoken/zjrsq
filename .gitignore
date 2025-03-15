@@ -3,6 +3,7 @@ backup/
 backup_250307/
 __pycache__/
 db/
+.ipynb_checkpoints/
 
 static/*.json
 
