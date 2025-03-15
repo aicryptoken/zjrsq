@@ -1,5 +1,8 @@
-
 const charts = {};
+
+// 自定义颜色方案
+const stackedColors = ['#A6CEE3', '#1F78B4', '#B2DF8A', '#33A02C', '#FB9A99', '#E31A1C', '#FDBF6F', '#FF7F00', '#CAB2D6', '#6A3D9A', '#FFFF99', '#B15928'];
+const barColors = ['#A6CEE3', '#1F78B4', '#B2DF8A', '#33A02C'];
 
 document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM loaded');
@@ -140,7 +143,7 @@ function updateChart(tableId, chartId, columnIndex) {
             return {
                 label: header,
                 data: values,
-                backgroundColor: `hsl(${index * 60}, 70%, 50%)`,
+                backgroundColor: stackedColors[index % stackedColors.length],
             };
         });
 
@@ -201,16 +204,19 @@ function updateChart(tableId, chartId, columnIndex) {
     } else if (isBar) {
         // 普通柱状图
         const labels = data.map(row => row[0]);
-        const values = data.map(row => {
-            const value = row[columnIndex];
-            return isNaN(parseFloat(value)) ? 0 : parseFloat(value);
-        });
-
-        const backgroundColors = values.map((val, idx) => {
-            const hue = 200;
-            const saturation = 70;
-            const lightness = Math.max(40, 85 - (val / Math.max(...values) * 45));
-            return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+        const datasets = [];
+        const selectedColumns = columnIndex === 0 ? Array.from({length: headers.length - 1}, (_, i) => i) : [columnIndex];
+        
+        selectedColumns.forEach((colIndex, index) => {
+            const values = data.map(row => {
+                const value = parseFloat(row[colIndex + 1]);
+                return isNaN(value) ? 0 : value;
+            });
+            datasets.push({
+                label: headers[colIndex + 1],
+                data: values,
+                backgroundColor: barColors[index % barColors.length],
+            });
         });
 
         if (charts[chartId]) {
@@ -221,13 +227,7 @@ function updateChart(tableId, chartId, columnIndex) {
             type: 'bar',
             data: {
                 labels: labels,
-                datasets: [{
-                    label: headers[columnIndex],
-                    data: values,
-                    backgroundColor: backgroundColors,
-                    borderColor: 'rgba(54, 162, 235, 1)',
-                    borderWidth: 1
-                }]
+                datasets: datasets
             },
             options: {
                 responsive: true,
@@ -235,10 +235,10 @@ function updateChart(tableId, chartId, columnIndex) {
                 scales: {
                     y: {
                         beginAtZero: true,
-                        max: Math.max(...values) * 1.1,
                         ticks: {
-                            callback: function(value) {
-                                return value >= 1000 ? value.toLocaleString() : value.toFixed(2);
+                            callback: function(value, index, values) {
+                                const maxValue = Math.max(...values.map(t => t.value));
+                                return maxValue < 10 ? value.toFixed(1) : value.toLocaleString();
                             },
                             font: { size: 11 }
                         }
