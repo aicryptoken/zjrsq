@@ -24,59 +24,6 @@ def calculate_user_intervals(orders_df: pd.DataFrame) -> pd.DataFrame:
     orders_df['order_interval'] = (orders_df['创建时间'] - orders_df['上次下单日期']).dt.days
     return orders_df
 
-def calculate_user_metrics(orders_df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """计算活跃用户、流失用户、重新激活用户和新增用户"""
-    unique_months = sorted(orders_df['booking_month'].unique())
-    last_order_dates = orders_df.groupby('会员号')['创建时间'].max().reset_index()
-    first_order_dates = orders_df.groupby('会员号')['创建时间'].min().reset_index()
-    
-    active_users, churn_users, reactivated_users, new_users = [], [], [], []
-    
-    for period_month in unique_months:
-        month_start = period_month.to_timestamp()
-        month_end = period_month.to_timestamp('M')
-        
-        active_users.append({
-            'booking_month': str(period_month),
-            '活跃用户_30天': len(orders_df[(orders_df['创建时间'] >= month_end - timedelta(days=30)) &
-                                        (orders_df['创建时间'] <= month_end)]['会员号'].unique()),
-            '活跃用户_60天': len(orders_df[(orders_df['创建时间'] >= month_end - timedelta(days=60)) &
-                                        (orders_df['创建时间'] <= month_end)]['会员号'].unique()),
-            '活跃用户_90天': len(orders_df[(orders_df['创建时间'] >= month_end - timedelta(days=90)) &
-                                        (orders_df['创建时间'] <= month_end)]['会员号'].unique())
-        })
-        
-        churn_users.append({
-            'booking_month': str(period_month),
-            '流失预警_30_60天': len(last_order_dates[(last_order_dates['创建时间'] < month_end - timedelta(days=30)) &
-                                                  (last_order_dates['创建时间'] >= month_end - timedelta(days=60))]['会员号'].unique()),
-            '流失预警_60_90天': len(last_order_dates[(last_order_dates['创建时间'] < month_end - timedelta(days=60)) &
-                                                  (last_order_dates['创建时间'] >= month_end - timedelta(days=90))]['会员号'].unique()),
-            '已流失_90_120天': len(last_order_dates[(last_order_dates['创建时间'] < month_end - timedelta(days=90)) &
-                                                   (last_order_dates['创建时间'] >= month_end - timedelta(days=120))]['会员号'].unique()),
-            '长期未活跃_120天以上': len(last_order_dates[last_order_dates['创建时间'] < month_end - timedelta(days=120)]['会员号'].unique())
-        })
-        
-        users_with_previous_order = orders_df[(orders_df['创建时间'] < month_start - timedelta(days=90)) &
-                                            (orders_df['创建时间'] >= month_start - timedelta(days=180))]['会员号'].unique()
-        reactivated_users.append({
-            'booking_month': str(period_month),
-            '重新激活用户': len(orders_df[(orders_df['会员号'].isin(users_with_previous_order)) &
-                                       (orders_df['创建时间'] >= month_start) &
-                                       (orders_df['创建时间'] <= month_end)]['会员号'].unique())
-        })
-        
-        new_in_month = len(first_order_dates[(first_order_dates['创建时间'] >= month_start) &
-                                            (first_order_dates['创建时间'] <= month_end)]['会员号'].unique())
-        new_users.append({'booking_month': str(period_month), '新增用户': new_in_month})
-    
-    return (
-        pd.DataFrame(active_users),
-        pd.DataFrame(churn_users),
-        pd.DataFrame(reactivated_users),
-        pd.DataFrame(new_users)
-    )
-
 def analyze_order(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     """合并的订单优化和升舱分析"""
     # 确保时间列是datetime格式并提取月份
@@ -177,78 +124,98 @@ def analyze_order(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     }
 
 
-def analyze_member_value(space_df: pd.DataFrame, db_path: str) -> Dict[str, pd.DataFrame]:
-    space_df = calculate_user_intervals(space_df)
-    active_users_df, churn_users_df, reactivated_users_df, new_users_df = calculate_user_metrics(space_df)
-    result_df = pd.merge(active_users_df, churn_users_df, on='booking_month', how='left')
-    result_df = pd.merge(result_df, reactivated_users_df, on='booking_month', how='left')
-    result_df = pd.merge(result_df, new_users_df, on='booking_month', how='left')
-
-    # 按月和会员等级分组统计
-    monthly_level_stats = space_df.groupby(['booking_month', '等级']).agg({
+def analyze_member(member_df: pd.DataFrame, db_path: str) -> Dict[str, pd.DataFrame]:
+    """合并后的会员分析函数"""
+    member_df = calculate_user_intervals(member_df)
+    unique_months = sorted(member_df['booking_month'].unique())
+    last_order_dates = member_df.groupby('会员号')['创建时间'].max().reset_index()
+    first_order_dates = member_df.groupby('会员号')['创建时间'].min().reset_index()
+    
+    # 初始化结果列表
+    monthly_metrics = []
+    
+    for period_month in unique_months:
+        month_start = period_month.to_timestamp()
+        month_end = period_month.to_timestamp('M')
+        
+        # 当前月数据
+        current_month_orders = member_df[(member_df['创建时间'] >= month_start) & 
+                                       (member_df['创建时间'] <= month_end)]
+        active_users = current_month_orders['会员号'].nunique()
+        
+        # 新增用户
+        new_users = len(first_order_dates[(first_order_dates['创建时间'] >= month_start) &
+                                        (first_order_dates['创建时间'] <= month_end)]['会员号'].unique())
+        
+        # 流失相关
+        churn_30_60 = len(last_order_dates[(last_order_dates['创建时间'] < month_end - timedelta(days=30)) &
+                                         (last_order_dates['创建时间'] >= month_end - timedelta(days=60))]['会员号'].unique())
+        churn_60_90 = len(last_order_dates[(last_order_dates['创建时间'] < month_end - timedelta(days=60)) &
+                                         (last_order_dates['创建时间'] >= month_end - timedelta(days=90))]['会员号'].unique())
+        churn_long = len(last_order_dates[last_order_dates['创建时间'] < month_end - timedelta(days=120)]['会员号'].unique())
+        
+        # 重新激活用户
+        prev_users = member_df[(member_df['创建时间'] < month_start - timedelta(days=90)) &
+                             (member_df['创建时间'] >= month_start - timedelta(days=180))]['会员号'].unique()
+        reactivated = len(current_month_orders[current_month_orders['会员号'].isin(prev_users)]['会员号'].unique())
+        
+        # 计算回购用户
+        past_users = member_df[member_df['创建时间'] < month_start]['会员号'].unique()
+        current_orders = current_month_orders[current_month_orders['会员号'].isin(past_users)].sort_values('创建时间')
+        repurchase_users = len(current_orders.groupby('会员号').filter(
+            lambda x: (x['创建时间'].max() - x['创建时间'].min()).days >= 1
+        )['会员号'].unique())
+        
+        monthly_metrics.append({
+            'booking_month': str(period_month),
+            '活跃用户': active_users,
+            '新增用户': new_users,
+            '流失预警_30_60天': churn_30_60,
+            '流失预警_60_90天': churn_60_90,
+            '长期未活跃_120天以上': churn_long,
+            '重新激活用户': reactivated,
+            '回购用户': repurchase_users
+        })
+    
+    counts_df = pd.DataFrame(monthly_metrics)
+    
+    # 计算按月和会员等级的统计
+    monthly_level_stats = member_df.groupby(['booking_month', '等级']).agg({
         '实付金额': ['mean', 'sum'],
         '订单编号': 'count',
         '会员号': 'nunique'
     }).reset_index()
     monthly_level_stats.columns = ['月份', '等级', '平均收入', '总收入', '订单量', '独立会员数量']
-
-    # 平均收入表
-    avg_revenue_table = pd.pivot_table(
-        monthly_level_stats,
-        values='平均收入',
-        index='月份',  # 行是月份
-        columns='等级',  # 列是等级
-        fill_value=0
-    ).reset_index()
-
-    # 总收入表
-    total_revenue_table = pd.pivot_table(
-        monthly_level_stats,
-        values='总收入',
-        index='月份',  # 行是月份
-        columns='等级',  # 列是等级
-        fill_value=0
-    ).reset_index()
-
-    # 订单量表
-    order_volume_table = pd.pivot_table(
-        monthly_level_stats,
-        values='订单量',
-        index='月份',  # 行是月份
-        columns='等级',  # 列是等级
-        fill_value=0
-    ).reset_index()
-
-    # 独立会员数量表
-    unique_members_table = pd.pivot_table(
-        monthly_level_stats,
-        values='独立会员数量',
-        index='月份',  # 行是月份
-        columns='等级',  # 列是等级
-        fill_value=0
-    ).reset_index()
     
-    # 分离数量和比率
-    counts_df = result_df.fillna(0)
-    rates_df = pd.DataFrame({'booking_month': result_df['booking_month']})
+    # 生成统计表
+    avg_revenue_table = pd.pivot_table(monthly_level_stats, values='平均收入', index='月份', columns='等级', fill_value=0).reset_index()
+    total_revenue_table = pd.pivot_table(monthly_level_stats, values='总收入', index='月份', columns='等级', fill_value=0).reset_index()
+    order_volume_table = pd.pivot_table(monthly_level_stats, values='订单量', index='月份', columns='等级', fill_value=0).reset_index()
+    unique_members_table = pd.pivot_table(monthly_level_stats, values='独立会员数量', index='月份', columns='等级', fill_value=0).reset_index()
     
-    # 计算留存率
-    rates_df['30天留存率'] = counts_df['新增用户'] / counts_df['活跃用户_30天'] *100
-    rates_df['60天留存率'] = counts_df['新增用户'] / counts_df['活跃用户_60天'] *100
-    rates_df['90天留存率'] = counts_df['新增用户'] / counts_df['活跃用户_90天'] *100
-
-    # 计算流失率
-    rates_df['30天流失率'] = counts_df['流失预警_30_60天'] / counts_df['活跃用户_30天'].shift(1) * 100
+    # 计算一个月留存率、回购率及流失率
+    rates_df = pd.DataFrame({'booking_month': counts_df['booking_month']})
+    rates_df['一个月留存率'] = 0.0
+    rates_df['回购率'] = counts_df['回购用户'] / counts_df['活跃用户'] * 100
+    rates_df['30天流失率'] = counts_df['流失预警_30_60天'] / counts_df['活跃用户'].shift(1) * 100
     rates_df['60天流失率'] = counts_df['流失预警_60_90天'] / counts_df['流失预警_30_60天'].shift(1) * 100
-    rates_df['90天流失率'] = counts_df['已流失_90_120天'] / counts_df['流失预警_60_90天'].shift(1) * 100
     
-    # 计算90天用户激活率
-    rates_df['90天用户激活率'] = counts_df['重新激活用户'] / (
-        counts_df['流失预警_60_90天'] + counts_df['已流失_90_120天'] * 100
-    )
-    # 替换NaN值为0
+    for i, month in enumerate(unique_months[1:], 1):
+        prev_month = unique_months[i-1]
+        prev_new_users = member_df[(member_df['booking_month'] == prev_month) & 
+                                 (member_df['会员号'].isin(first_order_dates[
+                                     (first_order_dates['创建时间'] >= prev_month.to_timestamp()) &
+                                     (first_order_dates['创建时间'] <= prev_month.to_timestamp('M'))
+                                 ]['会员号']))]['会员号'].unique()
+        current_active = member_df[(member_df['booking_month'] == month) & 
+                                 (member_df['会员号'].isin(prev_new_users))]['会员号'].nunique()
+        rates_df.loc[i, '一个月留存率'] = current_active / len(prev_new_users) * 100 if len(prev_new_users) > 0 else 0
+    
+    # 处理NaN值
+    counts_df = counts_df.fillna(0)
     rates_df = rates_df.fillna(0)
-
+    
+    # 返回结果字典
     return {
         '每月平均收入_bar': avg_revenue_table,
         '每月总收入_bar': total_revenue_table,
@@ -605,13 +572,13 @@ def analyze(conn):
         space_df['开始使用时刻'] = pd.to_datetime(space_df['预定开始时间'], errors='coerce').dt.hour
 
         order_results = analyze_order(space_df)
-        member_results = analyze_member_value(space_df, conn)
+        member_results = analyze_member(space_df, conn)
         user_results = analyze_users(space_df)
-        weekly_results = analyze_weekly_finance(space_df)
+        financial_results = analyze_weekly_finance(space_df)
         space_results = analyze_space(space_df)
 
         all_results = {
-            '财务数据': weekly_results,
+            '财务数据': financial_results,
             '订单分析': order_results,
             '会员分析': member_results,
             '用户分析': user_results,
