@@ -1,9 +1,18 @@
 import sqlite3
 import pandas as pd
+import logging
 from pandas import Timestamp, Period
 from typing import Dict, Tuple
 import numpy as np
 from datetime import timedelta, time
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('db/ideapod_space.log')
+    ]
+)
 
 def connect_to_db(db_path: str) -> sqlite3.Connection:
     """Efficiently connect to SQLite database"""
@@ -217,11 +226,11 @@ def analyze_member(member_df: pd.DataFrame, db_path: str) -> Dict[str, pd.DataFr
     
     # 返回结果字典
     return {
-        '用户留存与流失_bar': counts_df,
-        '用户留存与流失率_bar': rates_df,
-        '每月平均收入_bar': avg_revenue_table,
-        '每月总收入_bar': total_revenue_table,
-        '每月订单量_bar': order_volume_table
+        # '用户留存与流失_bar': counts_df,  # 展示不用显示
+        '留存与流失率（表格）_bar': rates_df,
+        '月收入占比_stacked': total_revenue_table,
+        '月单量占比_stacked': order_volume_table
+        # '每月平均收入_bar': avg_revenue_table, # 展示不用显示
     }
 
 
@@ -301,7 +310,7 @@ def analyze_users(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
 
 def analyze_weekly_finance(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     """周度财务分析"""
-    space_df['booking_week'] = space_df['创建时间'].dt.to_period('W-MON').apply(lambda x: x.start_time.date())
+    
     weekly_analysis = space_df.groupby('booking_week').agg({
         '订单编号': 'count',  
         '实付金额': ['sum', 'mean'],
@@ -309,27 +318,21 @@ def analyze_weekly_finance(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
         '实际时长': ['sum', 'mean']
     })
     
-    weekly_analysis.columns = ['订单数', '总收入', '平均订单金额', '活跃会员数', '总使用时长', '平均使用时长']
+    weekly_analysis.columns = ['订单量', '销售收入', '平均订单金额', '活跃会员数', '总使用时长', '平均使用时长']
     weekly_analysis = weekly_analysis.reset_index()
     weekly_analysis['周'] = weekly_analysis['booking_week'].astype(str)
     weekly_analysis = weekly_analysis.drop(columns=['booking_week'])
-    weekly_analysis = weekly_analysis[['周', '订单数', '总收入', '平均订单金额', '活跃会员数', '总使用时长', '平均使用时长']]
+    weekly_analysis = weekly_analysis[['周', '销售收入', '订单量', '平均订单金额', '活跃会员数', '总使用时长', '平均使用时长']]
     return {'财务分析_bar': weekly_analysis}
 
 def analyze_space(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     """空间分析"""
 
-    space_df = space_df.copy()
     # 过滤时间和商品名
-    space_df = space_df[space_df['创建时间'] >= '2023-09-19']
-    space_df = space_df[~space_df['订单商品名'].isin(['丛林小剧院', '丛林心流舱'])]
-
-    # 确保日期时间字段格式正确
-    date_columns = ['创建时间', '预定开始时间', '预定结束时间']
-    for col in date_columns:
-        if col in space_df.columns and not pd.api.types.is_datetime64_any_dtype(space_df[col]):
-            space_df[col] = pd.to_datetime(space_df[col], errors='coerce')
-    
+    filtered_space_df = space_df[
+        (space_df['创建时间'] >= '2023-09-19') & 
+        (~space_df['订单商品名'].isin(['丛林小剧院', '丛林心流舱']))
+    ]
     # 定义有效时间段和每日可用时长
     def get_valid_time_range(product_name):
         if isinstance(product_name, str) and '心流舱' in product_name:
@@ -342,7 +345,7 @@ def analyze_space(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
         return 11  # 9:00 - 20:00 (11小时)
 
     # 高峰时段分析
-    peak_analysis = space_df.groupby('开始使用时刻').agg({
+    peak_analysis = filtered_space_df.groupby('开始使用时刻').agg({
         '订单编号': 'count',
         '实付金额': 'sum'
     }).reset_index()
@@ -351,32 +354,29 @@ def analyze_space(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     peak_analysis['收入占比'] = np.where(total_revenue == 0, 0, peak_analysis['实付金额'] / total_revenue * 100)
     peak_analysis['订单占比'] = np.where(total_orders == 0, 0, peak_analysis['订单编号'] / total_orders * 100)
     peak_analysis.columns = ['开始使用时刻', '订单数', '收入', '收入占比', '订单占比']
-
-    # 周度分析
-    space_df['booking_week'] = space_df['创建时间'].dt.to_period('W-MON').apply(lambda x: x.start_time.date())
     
     results = {'高峰时段分析_bar': peak_analysis}
 
-    # 基本指标分析 (订单数, 总收入, 总使用时长, 平均使用时长)
-    for metric in ['订单数', '总收入', '总使用时长', '平均使用时长', '利用率']:
+    # 基本指标分析 (订单数, 收入, 总时长, 单均时长，利用率)
+    for metric in ['收入', '订单量','总时长', '单均时长', '利用率']:
         try:
-            if metric == '订单数':
-                df = space_df.groupby(['booking_week', '订单商品名'])['订单编号'].count().reset_index()
-                df.columns = ['周', '空间类型', '订单数']
-            elif metric == '总收入':
-                df = space_df.groupby(['booking_week', '订单商品名'])['实付金额'].sum().reset_index()
-                df.columns = ['周', '空间类型', '总收入']
-            elif metric == '总使用时长':
-                df = space_df.groupby(['booking_week', '订单商品名'])['实际时长'].sum().reset_index()
-                df.columns = ['周', '空间类型', '总使用时长']
-            elif metric == '平均使用时长':
-                df = space_df.groupby(['booking_week', '订单商品名'])['实际时长'].mean().reset_index()
-                df.columns = ['周', '空间类型', '平均使用时长']
+            if metric == '订单量':
+                df = filtered_space_df.groupby(['booking_week', '订单商品名'])['订单编号'].count().reset_index()
+                df.columns = ['周', '空间类型', '订单量']
+            elif metric == '收入':
+                df = filtered_space_df.groupby(['booking_week', '订单商品名'])['实付金额'].sum().reset_index()
+                df.columns = ['周', '空间类型', '收入']
+            elif metric == '总时长':
+                df = filtered_space_df.groupby(['booking_week', '订单商品名'])['实际时长'].sum().reset_index()
+                df.columns = ['周', '空间类型', '总时长']
+            elif metric == '单均时长':
+                df = filtered_space_df.groupby(['booking_week', '订单商品名'])['实际时长'].mean().reset_index()
+                df.columns = ['周', '空间类型', '单均时长']
             elif metric == '利用率':
                 # 利用率计算 - 每周每个空间类型的利用率
                 weekly_products = []
                 
-                for (week, product_name), group in space_df.groupby(['booking_week', '订单商品名']):
+                for (week, product_name), group in filtered_space_df.groupby(['booking_week', '订单商品名']):
                     daily_hours = get_daily_hours(product_name)
                     max_weekly_hours = daily_hours * 7
                     actual_hours = group['实际时长'].sum()
@@ -397,19 +397,19 @@ def analyze_space(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
             
             # 透视表转换结果
             pivot_df = df.pivot(index='周', columns='空间类型', values=df.columns[-1])
-            results[f'空间{metric}分析_bar'] = pivot_df.reset_index().rename_axis(None, axis=1)
+            results[f'各区{metric}_bar'] = pivot_df.reset_index().rename_axis(None, axis=1)
         
         except Exception as e:
-            print(f"Error in '{metric}' calculation: {str(e)}")
+            logging.error(f"Error in '{metric}' calculation: {str(e)}")
             # 如果出错，创建一个空的DataFrame作为结果
-            results[f'空间{metric}分析_bar'] = pd.DataFrame(columns=['周'])
+            results[f'各区{metric}_bar'] = pd.DataFrame(columns=['周'])
 
     # 周度日内使用率_bar (按分钟计算使用率)
     try:
         # 按周整理数据并计算
         hourly_usage_data = []
         
-        for week, week_df in space_df.groupby('booking_week'):
+        for week, week_df in filtered_space_df.groupby('booking_week'):
             # 获取该周的所有日期
             week_start = pd.Timestamp(week)
             week_dates = [week_start + timedelta(days=i) for i in range(7)]
@@ -480,26 +480,22 @@ def analyze_space(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
             results['周度日内使用率_bar'] = pd.DataFrame(columns=['周'])
     
     except Exception as e:
-        print(f"Error in hourly utilization calculation: {str(e)}")
+        logging.error(f"Error in hourly utilization calculation: {str(e)}")
         results['周度日内使用率_bar'] = pd.DataFrame(columns=['周'])
 
     # 周内使用率_bar (按星期几分析)
     try:
-        # 添加星期和月份字段
-        space_df['weekday'] = space_df['创建时间'].dt.day_name()
+        
+        weekday_order = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+        
         weekday_map = {
             'Monday': '周一', 'Tuesday': '周二', 'Wednesday': '周三', 
             'Thursday': '周四', 'Friday': '周五', 'Saturday': '周六', 'Sunday': '周日'
         }
-        space_df['weekday'] = space_df['weekday'].map(weekday_map)
-        weekday_order = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
-        
-        space_df['booking_month'] = space_df['创建时间'].dt.to_period('M')
-        
         # 周内使用率数据
         weekday_usage_data = []
         
-        for month, month_df in space_df.groupby('booking_month'):
+        for month, month_df in filtered_space_df.groupby('booking_month'):
             month_str = str(month)
             month_data = {'月份': month_str}
             
@@ -559,7 +555,7 @@ def analyze_space(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
             results['周内使用率_bar'] = empty_df
     
     except Exception as e:
-        print(f"Error in weekday utilization calculation: {str(e)}")
+        logging.error(f"Error in weekday utilization calculation: {str(e)}")
         results['周内使用率_bar'] = pd.DataFrame(columns=['月份'] + ['周一', '周二', '周三', '周四', '周五', '周六', '周日'])
 
     return results
@@ -608,8 +604,16 @@ def analyze(conn):
         )
         # 预处理数据，不填充数值列的 NaN，保留为 None
         space_df = preprocess_datetime(space_df)
+
         space_df['booking_month'] = space_df['创建时间'].dt.to_period('M')
+        space_df['booking_week'] = space_df['创建时间'].dt.to_period('W-MON').apply(lambda x: x.start_time.date())
         space_df['开始使用时刻'] = pd.to_datetime(space_df['预定开始时间'], errors='coerce').dt.hour
+        space_df['weekday'] = space_df['创建时间'].dt.day_name()
+        weekday_map = {
+            'Monday': '周一', 'Tuesday': '周二', 'Wednesday': '周三', 
+            'Thursday': '周四', 'Friday': '周五', 'Saturday': '周六', 'Sunday': '周日'
+        }
+        space_df['weekday'] = space_df['weekday'].map(weekday_map)
 
         order_results = analyze_order(space_df)
         member_results = analyze_member(space_df, conn)
@@ -620,9 +624,10 @@ def analyze(conn):
         all_results = {
             '财务数据': financial_results,
             '订单分析': order_results,
+            '空间产品': space_results,
             '会员分析': member_results,
-            '用户分析': user_results,
-            '空间具体分析': space_results
+            '用户价值': user_results
+
         }
 
         processed_results = {}

@@ -1,8 +1,17 @@
 import sqlite3
 import pandas as pd
 import numpy as np
+import logging
 from typing import Dict, Any
 from datetime import timedelta
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('db/ideapod_catering.log')
+    ]
+)
 
 def connect_to_db(db_path: str) -> sqlite3.Connection:
     """Efficiently connect to SQLite database"""
@@ -17,18 +26,15 @@ def preprocess_datetime(df: pd.DataFrame) -> pd.DataFrame:
                 try:
                     df[col] = pd.to_datetime(df[col], errors='coerce')
                 except Exception as e:
-                    print(f"转换 {col} 列时出错：{e}")
+                    logging.error(f"转换 {col} 列时出错：{e}")
     return df
 
 def financial_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     """
     财务分析：包括周度实收金额、周内销售金额/订单、时间段销售金额/订单
     """
-    catering_df = preprocess_datetime(catering_df)
     
     # 添加时间维度
-    catering_df['订单周'] = catering_df['下单时间'].dt.to_period('W-MON').apply(lambda x: x.start_time.date())
-    catering_df['订单月份'] = catering_df['下单时间'].dt.to_period('M')
     catering_df['星期'] = catering_df['下单时间'].dt.day_name()  # 英文星期
     catering_df['订单时刻'] = catering_df['下单时间'].dt.hour
 
@@ -85,7 +91,7 @@ def financial_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     hourly_orders['订单月份'] = hourly_orders['订单月份'].astype(str)
 
     return {
-        '销售收入_bar': weekly_revenue_df,
+        '财务分析_bar': weekly_revenue_df,
         '周内收入分布_stacked': weekday_sales,
         '周内单量分布_stacked': weekday_orders,
         '日内收入分布_stacked': hourly_sales,
@@ -96,9 +102,7 @@ def order_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     """
     订单分析：仅保留订单来源分析，按周拆分为销售金额、订单数量和订单单价
     """
-    catering_df = preprocess_datetime(catering_df)
-    catering_df['订单周'] = catering_df['下单时间'].dt.to_period('W-MON').apply(lambda x: x.start_time.date())
-
+    
     # 销售收入分析
     source_sales = catering_df.groupby(['订单周', '订单来源']).agg(
         销售收入=('实收', 'sum')
@@ -130,7 +134,7 @@ def order_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
 
 def product_analysis(catering_df: pd.DataFrame, conn) -> dict:
     """
-    商品分析：3 - 产品周度销售分析，筛选前20个基础产品，按周输出销售数量
+    商品分析：产品周度销售分析，筛选前20个基础产品，按周输出销售数量
     """
     product_df = pd.read_sql_query("SELECT * FROM Product", conn)
 
@@ -150,7 +154,7 @@ def product_analysis(catering_df: pd.DataFrame, conn) -> dict:
             return pd.DataFrame()
 
     # 解析商品并合并基础产品信息
-    catering_df = preprocess_datetime(catering_df)
+    
     product_analysis = catering_df[['商品', '下单时间']].apply(lambda x: parse_products(x['商品'], x['下单时间']), axis=1)
     product_sales = pd.concat(product_analysis.tolist(), ignore_index=True)
     product_sales = pd.merge(product_sales, product_df[['商品名', '基础产品']], 
@@ -178,8 +182,8 @@ def product_analysis(catering_df: pd.DataFrame, conn) -> dict:
 def marketing_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     """营销分析，移除重复的促销类型"""
     # 预处理时间
-    catering_df = preprocess_datetime(catering_df)
-    catering_df['订单月份'] = catering_df['下单时间'].dt.to_period('M')
+    
+    
 
     # 处理促销类型，去除重复的优惠信息
     def deduplicate_promotions(promo):
@@ -212,8 +216,7 @@ def user_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     现在修改为基于catering_df计算RFM用户价值
     注意参数：lamda，weight，以及用户价值的算法
     """
-    catering_df = preprocess_datetime(catering_df)
-    # catering_df['订单周'] = catering_df['下单时间'].dt.to_period('W-MON').apply(lambda x: x.start_time.date())
+
     catering_df['member_id'] = np.where(
         catering_df['会员号'].isna(),
         catering_df.index.map(lambda x: f'8888000{x:04d}'),
@@ -297,6 +300,10 @@ def analyze(conn):
     try:
         catering_df = pd.read_sql_query("SELECT * FROM Catering", conn)
         
+        catering_df = preprocess_datetime(catering_df)
+        catering_df['订单月份'] = catering_df['下单时间'].dt.to_period('M')
+        catering_df['订单周'] = catering_df['下单时间'].dt.to_period('W-MON').apply(lambda x: x.start_time.date())
+        
         financial_results = financial_analysis(catering_df)
         order_results = order_analysis(catering_df)
         product_results = product_analysis(catering_df, conn)
@@ -304,11 +311,11 @@ def analyze(conn):
         user_results = user_analysis(catering_df)
 
         all_results = {
-            '财务数据': financial_results,
-            '订单来源': order_results,
-            '商品销量': product_results,
-            '促销分析': marketing_results,
-            '用户分析': user_results,
+            '财务分析': financial_results,
+            '订单分析': order_results,
+            '餐饮产品': product_results,
+            '用户价值': user_results,
+            '促销分析': marketing_results
         }
 
         def convert_df_to_dict(data):

@@ -40,14 +40,16 @@ def space():
         return render_template('error.html', error="空间分析数据文件未找到，请先运行预计算脚本")
 
 # 元数据分析路由
-@app.route('/meta')
-def meta():
-    conn = get_db_connection()
-    meta.analyze(conn)
-    conn.close()
-    with open('metadata_report.json', 'r') as f:
-        result = json.load(f)
-    return render_template('meta.html', result=result)
+@app.route('/group')
+def group():
+    try:
+        with open('static/group_results.json', 'r', encoding='utf-8') as f:
+            results = json.load(f)
+        if 'error' in results:
+            return render_template('group.html', error=results['error'])
+        return render_template('group.html', results=results)
+    except FileNotFoundError:
+        return render_template('error.html', error="集团数据文件未找到，请先运行预计算脚本")
 
 if __name__ == '__main__':
     app.run(debug=True)
