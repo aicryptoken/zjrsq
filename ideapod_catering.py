@@ -125,7 +125,7 @@ def order_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     return {
         '销售收入_来源_stacked': source_sales,
         '订单量_来源_stacked': source_orders,
-        '订单单价_来源_stacked': source_price
+        '订单单价_来源_bar': source_price
     }
 
 def product_analysis(catering_df: pd.DataFrame, conn) -> dict:
@@ -176,11 +176,24 @@ def product_analysis(catering_df: pd.DataFrame, conn) -> dict:
     }
 
 def marketing_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
-    """营销分析保持不变"""
+    """营销分析，移除重复的促销类型"""
+    # 预处理时间
     catering_df = preprocess_datetime(catering_df)
     catering_df['订单月份'] = catering_df['下单时间'].dt.to_period('M')
-    catering_df['促销类型'] = catering_df['使用优惠'].fillna('无优惠')
 
+    # 处理促销类型，去除重复的优惠信息
+    def deduplicate_promotions(promo):
+        if pd.isna(promo) or promo == '无优惠':
+            return '无优惠'
+        # 将促销类型按逗号分隔并去重
+        promo_list = promo.split(',')
+        unique_promos = list(dict.fromkeys(promo_list))  # 去重并保持顺序
+        return ','.join(unique_promos)
+
+    # 应用去重逻辑
+    catering_df['促销类型'] = catering_df['使用优惠'].apply(deduplicate_promotions)
+
+    # 分组统计
     promotion_analysis = catering_df.groupby(['订单月份', '促销类型']).agg(
         订单总数=('订单号', 'count'),
         销售收入=('实收', 'sum'),
@@ -190,13 +203,14 @@ def marketing_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     promotion_analysis['订单月份'] = promotion_analysis['订单月份'].astype(str)
 
     return {
-        '促销优惠分析（数据有误）_bar': promotion_analysis
+        '促销优惠分析_bar': promotion_analysis
     }
 
 def user_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     """
     用户分析：原来是以周度，将用户按订单次数分类，计算订单数量、总收入、平均订单价格
     现在修改为基于catering_df计算RFM用户价值
+    注意参数：lamda，weight，以及用户价值的算法
     """
     catering_df = preprocess_datetime(catering_df)
     # catering_df['订单周'] = catering_df['下单时间'].dt.to_period('W-MON').apply(lambda x: x.start_time.date())
@@ -244,8 +258,8 @@ def user_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     ) if frequency_max != frequency_min else 0
     
     # 计算user_value
-    weight_monetary = 0.6  # w = 0.6
-    weight_frequency = 1 - weight_monetary  # 1 - w
+    weight_monetary = 0.4  # 餐饮用户单价较低，频次更重要
+    weight_frequency = 1 - weight_monetary  
     
     rfm_analysis['用户价值'] = (
         rfm_analysis['最近购买时间指数'] * 

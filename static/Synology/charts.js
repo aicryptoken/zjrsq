@@ -3,7 +3,7 @@ const charts = {};
 
 // 自定义颜色方案
 const stackedColors = ['#A6CEE3', '#1F78B4', '#B2DF8A', '#33A02C', '#FB9A99', '#E31A1C', '#FDBF6F', '#FF7F00', '#CAB2D6', '#6A3D9A', '#FFFF99', '#B15928'];
-const barColors = ['#A6CEE3', '#1F78B4', '#B2DF8A', '#33A02C'];
+const barColors = ['#1F78B4', '#A6CEE3', '#33A02C', '#B2DF8A'];
 
 document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM loaded');
