@@ -235,9 +235,9 @@ def user_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     rfm_analysis.columns = ['会员号', '最近下单时间', '总消费金额', '消费次数']
     rfm_analysis['Recency'] = (today - rfm_analysis['最近下单时间']).dt.days
     
-    # 计算最近购买时间指数: e^(-λ * Recency), λ=0.015
-    lambda_param = 0.015
-    rfm_analysis['最近购买时间指数'] = np.exp(-lambda_param * rfm_analysis['Recency'])
+    # 计算最近购买时间指数: e^(-λ * Recency), λ=0.0115对应60天下降到50
+    lambda_param = 0.0115
+    rfm_analysis['消费间隔指数'] = np.exp(-lambda_param * rfm_analysis['Recency']) * 100
     
     # 计算原始的消费力和消费频率指数
     rfm_analysis['monetary_raw'] = np.log(rfm_analysis['总消费金额'] + 1)
@@ -251,27 +251,45 @@ def user_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     
     rfm_analysis['消费力指数'] = (
         (rfm_analysis['monetary_raw'] - monetary_min) / (monetary_max - monetary_min)
-    ) if monetary_max != monetary_min else 0
+    ) * 100 if monetary_max != monetary_min else 0
     
     rfm_analysis['消费频率指数'] = (
         (rfm_analysis['frequency_raw'] - frequency_min) / (frequency_max - frequency_min)
-    ) if frequency_max != frequency_min else 0
+    ) * 100 if frequency_max != frequency_min else 0
     
     # 计算user_value
     weight_monetary = 0.4  # 餐饮用户单价较低，频次更重要
     weight_frequency = 1 - weight_monetary  
     
     rfm_analysis['用户价值'] = (
-        rfm_analysis['最近购买时间指数'] * 
+        rfm_analysis['消费间隔指数'] * 
         (rfm_analysis['消费力指数'] * weight_monetary + 
          rfm_analysis['消费频率指数'] * weight_frequency)
-    )
+    ) / 100
     
-    # 选择输出的列
-    result = rfm_analysis[['会员号', '用户价值' ,'最近购买时间指数', '消费力指数', '消费频率指数']]
+    # 创建0-100的区间（以1为间隔）
+    bins = np.arange(0, 101, 1)
     
+    # 对四个指标进行分布统计
+    value_dist = pd.cut(rfm_analysis['用户价值'], bins=bins, include_lowest=True).value_counts().sort_index()
+    recency_dist = pd.cut(rfm_analysis['消费间隔指数'], bins=bins, include_lowest=True).value_counts().sort_index()
+    monetary_dist = pd.cut(rfm_analysis['消费力指数'], bins=bins, include_lowest=True).value_counts().sort_index()
+    frequency_dist = pd.cut(rfm_analysis['消费频率指数'], bins=bins, include_lowest=True).value_counts().sort_index()
+    
+    # 创建包含0-100的第一列
+    score_range = pd.Series(range(1, 101), name='分数区间')
+
+    # 创建结果DataFrame
+    distribution_result = pd.DataFrame({
+        '分数区间': score_range,
+        '用户价值分布': value_dist.values,
+        '消费间隔指数分布': recency_dist.values,
+        '消费力指数分布': monetary_dist.values,
+        '消费频率指数分布': frequency_dist.values
+    })
+     
     return {
-        'RFM分析结果': result
+        '用户价值分布（RFM模型）_bar': distribution_result
     }
 
 def analyze(conn):

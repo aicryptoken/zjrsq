@@ -197,7 +197,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         const tableId = 'table-' + controlId.replace('control-', '');
                         const chartId = 'chart-' + controlId.replace('control-', '');
                         console.log('Column selected:', this.value);
-                        updateChart(tableId, chartId, this.value);
+                        updateChart(tableId, chartId, parseInt(this.value, 10));
                     });
                 }
             });
@@ -351,15 +351,16 @@ function updateChart(tableId, chartId, columnIndex) {
         // 普通柱状图
         const labels = data.map(row => row[0]);
         const datasets = [];
-        const selectedColumns = columnIndex === 0 ? Array.from({length: headers.length - 1}, (_, i) => i) : [columnIndex];
-        
+        const selectedColumns = (typeof columnIndex === 'number' && !isNaN(columnIndex)) ? 
+            (columnIndex === 0 ? Array.from({length: headers.length - 1}, (_, i) => i) : [columnIndex]) : 
+            Array.from({length: headers.length - 1}, (_, i) => i);
         selectedColumns.forEach((colIndex, index) => {
             const values = data.map(row => {
-                const value = parseFloat(row[colIndex + 1]);
+                const value = parseFloat(row[colIndex]);
                 return isNaN(value) ? 0 : value;
             });
             datasets.push({
-                label: headers[colIndex + 1],
+                label: headers[colIndex],
                 data: values,
                 backgroundColor: barColors[index % barColors.length],
             });
@@ -380,11 +381,11 @@ function updateChart(tableId, chartId, columnIndex) {
                 maintainAspectRatio: false,
                 scales: {
                     y: {
-                        beginAtZero: true,                        
+                        beginAtZero: true,
+                                             
                         ticks: {
-                            callback: function(value, index, values) {
-                                const maxValue = Math.max(...values.map(t => t.value));
-                                return maxValue < 10 ? value.toFixed(1) : value.toLocaleString();
+                            callback: function(value) {
+                                return value < 10 ? value.toFixed(1) : value.toLocaleString();
                             },
                             font: { size: 11 }
                         }
