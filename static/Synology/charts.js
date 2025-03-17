@@ -1,4 +1,3 @@
-
 const charts = {};
 
 // 自定义颜色方案
@@ -8,12 +7,11 @@ const barColors = ['#1F78B4', '#A6CEE3', '#33A02C', '#B2DF8A'];
 document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM loaded');
     
-    // 从JSON文件加载数据
     const jsonFile = document.body.dataset.jsonFile;
     
     if (!jsonFile) {
         console.error('No JSON file specified in data-json-file attribute');
-        return; // 停止执行
+        return;
     }
 
     fetch(jsonFile)
@@ -23,11 +21,9 @@ document.addEventListener('DOMContentLoaded', function() {
             const tabContents = document.getElementById('tabContents');
             let isFirst = true;
             
-            // 生成标签按钮和内容
             for (const [category, categoryData] of Object.entries(data)) {
                 const categoryId = category.replace(/ /g, '_');
                 
-                // 创建标签按钮
                 const button = document.createElement('button');
                 button.className = `tab-button ${isFirst ? 'active' : ''}`;
                 button.setAttribute('data-tab', categoryId);
@@ -37,12 +33,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
                 tabButtons.appendChild(button);
                 
-                // 创建标签内容区域
                 const tabContent = document.createElement('div');
                 tabContent.id = categoryId;
                 tabContent.className = `tab-content ${isFirst ? 'active' : ''}`;
                 
-                // 遍历每个数据集并创建图表和表格
                 for (const [key, value] of Object.entries(categoryData)) {
                     if (!value || value.length === 0) continue;
                     
@@ -53,78 +47,83 @@ document.addEventListener('DOMContentLoaded', function() {
                     const controlId = `control-${categoryId}-${keyId}`;
                     const titleId = `title-${categoryId}-${keyId}`;
                     
+                    let tableTitle = key;
+                    const isIgnore = tableTitle.endsWith('_ignore');
+                    const isTable = tableTitle.endsWith('_table');
+                    const isStacked = tableTitle.endsWith('_stacked');
+                    const isBar = tableTitle.endsWith('_bar') || (!isStacked && !isTable && !isIgnore);
+                    
+                    // 如果是_ignore，直接跳过
+                    if (isIgnore) continue;
+                    
                     // 创建标题
                     const title = document.createElement('h3');
                     title.className = 'chart-title';
                     title.id = titleId;
-                    title.textContent = key;
+                    title.textContent = tableTitle.replace('_bar', '').replace('_stacked', '').replace('_table', '');
                     tabContent.appendChild(title);
                     
-                    // 创建控制区域
-                    const controlArea = document.createElement('div');
-                    controlArea.className = 'control-area';
-                    controlArea.id = controlId;
-                    
-                    // 表格切换
-                    const tableToggleLabel = document.createElement('label');
-                    const tableToggle = document.createElement('input');
-                    tableToggle.type = 'checkbox';
-                    tableToggle.className = 'table-toggle';
-                    tableToggleLabel.appendChild(tableToggle);
-                    tableToggleLabel.appendChild(document.createTextNode(' 显示表格'));
-                    controlArea.appendChild(tableToggleLabel);
-                    
-                    // 图表切换
-                    const chartToggleLabel = document.createElement('label');
-                    const chartToggle = document.createElement('input');
-                    chartToggle.type = 'checkbox';
-                    chartToggle.className = 'chart-toggle';
-                    chartToggle.checked = true;
-                    chartToggleLabel.appendChild(chartToggle);
-                    chartToggleLabel.appendChild(document.createTextNode(' 显示图表'));
-                    controlArea.appendChild(chartToggleLabel);
-                    
-                    // 列选择下拉框（如果不是堆叠图表）
-                    if (!key.endsWith('_stacked')) {
-                        const columnSelect = document.createElement('select');
-                        columnSelect.className = 'column-select';
+                    // 如果不是只显示表格，则创建控制区域和图表
+                    if (!isTable) {
+                        const controlArea = document.createElement('div');
+                        controlArea.className = 'control-area';
+                        controlArea.id = controlId;
                         
-                        // 添加表头为选项（跳过第一列）
-                        const headers = Object.keys(value[0]);
-                        headers.forEach((header, index) => {
-                            if (index > 0) {
-                                const option = document.createElement('option');
-                                option.value = index;
-                                option.textContent = header;
-                                columnSelect.appendChild(option);
-                            }
-                        });
+                        const tableToggleLabel = document.createElement('label');
+                        const tableToggle = document.createElement('input');
+                        tableToggle.type = 'checkbox';
+                        tableToggle.className = 'table-toggle';
+                        tableToggleLabel.appendChild(tableToggle);
+                        tableToggleLabel.appendChild(document.createTextNode(' 显示表格'));
+                        controlArea.appendChild(tableToggleLabel);
                         
-                        controlArea.appendChild(columnSelect);
+                        const chartToggleLabel = document.createElement('label');
+                        const chartToggle = document.createElement('input');
+                        chartToggle.type = 'checkbox';
+                        chartToggle.className = 'chart-toggle';
+                        chartToggle.checked = true;
+                        chartToggleLabel.appendChild(chartToggle);
+                        chartToggleLabel.appendChild(document.createTextNode(' 显示图表'));
+                        controlArea.appendChild(chartToggleLabel);
+                        
+                        if (!isStacked) {
+                            const columnSelect = document.createElement('select');
+                            columnSelect.className = 'column-select';
+                            
+                            const headers = Object.keys(value[0]);
+                            headers.forEach((header, index) => {
+                                if (index > 0) {
+                                    const option = document.createElement('option');
+                                    option.value = index;
+                                    option.textContent = header;
+                                    columnSelect.appendChild(option);
+                                }
+                            });
+                            
+                            controlArea.appendChild(columnSelect);
+                        }
+                        
+                        tabContent.appendChild(controlArea);
+                        
+                        const chartContainer = document.createElement('div');
+                        chartContainer.className = 'chart-container';
+                        chartContainer.id = chartContainerId;
+                        
+                        const canvas = document.createElement('canvas');
+                        canvas.id = chartId;
+                        chartContainer.appendChild(canvas);
+                        tabContent.appendChild(chartContainer);
                     }
                     
-                    tabContent.appendChild(controlArea);
-                    
-                    // 创建图表容器
-                    const chartContainer = document.createElement('div');
-                    chartContainer.className = 'chart-container';
-                    chartContainer.id = chartContainerId;
-                    
-                    const canvas = document.createElement('canvas');
-                    canvas.id = chartId;
-                    chartContainer.appendChild(canvas);
-                    tabContent.appendChild(chartContainer);
-                    
-                    // 创建表格容器
+                    // 创建表格
                     const tableContainer = document.createElement('div');
                     tableContainer.className = 'table-container';
-                    tableContainer.style.display = 'none'; // 默认隐藏
+                    tableContainer.style.display = isTable ? 'block' : 'none';
                     
                     const table = document.createElement('table');
                     table.className = 'data-table';
                     table.id = tableId;
                     
-                    // 创建表头
                     const thead = document.createElement('thead');
                     const headerRow = document.createElement('tr');
                     
@@ -138,14 +137,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     thead.appendChild(headerRow);
                     table.appendChild(thead);
                     
-                    // 创建表格内容
                     const tbody = document.createElement('tbody');
                     value.forEach(row => {
                         const tr = document.createElement('tr');
-                        
                         Object.values(row).forEach(cellValue => {
                             const td = document.createElement('td');
-                            // 如果是数字，则保留两位小数
                             if (!isNaN(parseFloat(cellValue)) && isFinite(cellValue)) {
                                 td.textContent = parseFloat(cellValue).toFixed(2);
                             } else {
@@ -153,7 +149,6 @@ document.addEventListener('DOMContentLoaded', function() {
                             }
                             tr.appendChild(td);
                         });
-                        
                         tbody.appendChild(tr);
                     });
                     
@@ -166,7 +161,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 isFirst = false;
             }
             
-            // 添加事件监听器
             document.querySelectorAll('.table-toggle').forEach(toggle => {
                 toggle.addEventListener('change', function() {
                     const controlId = this.closest('.control-area').id;
@@ -202,10 +196,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
             
-            // 创建所有图表
             setTimeout(createAllCharts, 100);
             
-            // 窗口大小改变时重新调整图表大小
             window.addEventListener('resize', function() {
                 Object.values(charts).forEach(chart => {
                     if (chart) chart.resize();
@@ -249,8 +241,6 @@ function createAllCharts() {
             console.log('Creating chart for:', chartId);
             const columnIndex = columnSelect && columnSelect.options.length > 0 ? parseInt(columnSelect.value) : 0;
             updateChart(tableId, chartId, columnIndex);
-        } else {
-            console.error('Chart canvas not found for:', chartId);
         }
     });
 }
@@ -265,13 +255,11 @@ function updateChart(tableId, chartId, columnIndex) {
         return;
     }
     
-    // 判断图表类型并清理标题
     let tableTitle = titleElement.textContent;
     const isStacked = tableTitle.endsWith('_stacked');
     const isBar = tableTitle.endsWith('_bar') || !isStacked;
-    tableTitle = tableTitle.replace('_bar', '').replace('_stacked', '');
+    tableTitle = tableTitle.replace('_bar', '').replace('_stacked', '').replace('_table', '');
     
-    // 提取表格数据
     const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.textContent);
     const rows = Array.from(table.querySelectorAll('tbody tr'));
     const data = rows.map(row => {
@@ -279,7 +267,6 @@ function updateChart(tableId, chartId, columnIndex) {
     });
     
     if (isStacked) {
-        // 100%堆叠柱状图
         const labels = data.map(row => row[0]);
         const datasets = headers.slice(1).map((header, index) => {
             const values = data.map(row => {
@@ -293,7 +280,6 @@ function updateChart(tableId, chartId, columnIndex) {
             };
         });
         
-        // 计算百分比
         const totals = data.map((_, rowIndex) => {
             return datasets.reduce((sum, dataset) => sum + dataset.data[rowIndex], 0);
         });
@@ -317,38 +303,17 @@ function updateChart(tableId, chartId, columnIndex) {
                 responsive: true,
                 maintainAspectRatio: false,
                 scales: {
-                    x: {
-                        stacked: true,
-                        ticks: { maxRotation: 90, minRotation: 90, font: { size: 11 } }
-                    },
-                    y: {
-                        stacked: true,
-                        max: 100,
-                        beginAtZero: true,
-                        ticks: {
-                            callback: value => `${value}%`,
-                            font: { size: 11 }
-                        }
-                    }
+                    x: { stacked: true, ticks: { maxRotation: 90, minRotation: 90, font: { size: 11 } } },
+                    y: { stacked: true, max: 100, beginAtZero: true, ticks: { callback: value => `${value}%`, font: { size: 11 } } }
                 },
                 plugins: {
                     legend: { display: true, position: 'top' },
-                    title: {
-                        display: true,
-                        text: `${tableTitle} (百分比)`,
-                        font: { size: 16, weight: 'bold' },
-                        padding: { top: 10, bottom: 20 }
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: context => `${context.dataset.label}: ${context.parsed.y.toFixed(2)}%`
-                        }
-                    }
+                    title: { display: true, text: `${tableTitle} (百分比)`, font: { size: 16, weight: 'bold' }, padding: { top: 10, bottom: 20 } },
+                    tooltip: { callbacks: { label: context => `${context.dataset.label}: ${context.parsed.y.toFixed(2)}%` } }
                 }
             }
         });
     } else if (isBar) {
-        // 普通柱状图
         const labels = data.map(row => row[0]);
         const datasets = [];
         const selectedColumns = (typeof columnIndex === 'number' && !isNaN(columnIndex)) ? 
@@ -372,51 +337,18 @@ function updateChart(tableId, chartId, columnIndex) {
         
         charts[chartId] = new Chart(chartCanvas, {
             type: 'bar',
-            data: {
-                labels: labels,
-                datasets: datasets
-            },
+            data: { labels: labels, datasets: datasets },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 scales: {
-                    y: {
-                        beginAtZero: true,
-                                             
-                        ticks: {
-                            callback: function(value) {
-                                return value < 10 ? value.toFixed(1) : value.toLocaleString();
-                            },
-                            font: { size: 11 }
-                        }
-                    },
-                    x: {
-                        ticks: { maxRotation: 90, minRotation: 90, font: { size: 11 } }
-                    }
+                    y: { beginAtZero: true, ticks: { callback: value => value < 10 ? value.toFixed(1) : value.toLocaleString(), font: { size: 11 } } },
+                    x: { ticks: { maxRotation: 90, minRotation: 90, font: { size: 11 } } }
                 },
                 plugins: {
                     legend: { display: false },
-                    title: {
-                        display: true,
-                        text: tableTitle,
-                        font: { size: 16, weight: 'bold' },
-                        padding: { top: 10, bottom: 20 }
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                let label = context.dataset.label || '';
-                                if (label) label += ': ';
-                                if (context.parsed.y !== null) {
-                                    label += context.parsed.y.toLocaleString(undefined, {
-                                        minimumFractionDigits: 2,
-                                        maximumFractionDigits: 2
-                                    });
-                                }
-                                return label;
-                            }
-                        }
-                    }
+                    title: { display: true, text: tableTitle, font: { size: 16, weight: 'bold' }, padding: { top: 10, bottom: 20 } },
+                    tooltip: { callbacks: { label: context => `${context.dataset.label || ''}: ${context.parsed.y.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` } }
                 }
             }
         });
