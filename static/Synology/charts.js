@@ -3,6 +3,7 @@ const charts = {};
 // 自定义颜色方案
 const stackedColors = ['#A6CEE3', '#1F78B4', '#B2DF8A', '#33A02C', '#FB9A99', '#E31A1C', '#FDBF6F', '#FF7F00', '#CAB2D6', '#6A3D9A', '#FFFF99', '#B15928'];
 const barColors = ['#1F78B4', '#A6CEE3', '#33A02C', '#B2DF8A'];
+const lineColors = barColors;
 
 document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM loaded');
@@ -49,7 +50,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     const isIgnore = key.endsWith('_ignore');
                     const isTable = key.endsWith('_table');
                     const isStacked = key.endsWith('_stacked');
-                    const isBar = key.endsWith('_bar') || (!isStacked && !isIgnore && !isTable);
+                    const isLine = key.endsWith('_line');
+                    const isBar = key.endsWith('_bar') || (!isStacked && !isIgnore && !isTable && !isLine);
                     
                     // 如果是_ignore类型，则跳过
                     if (isIgnore) continue;
@@ -71,6 +73,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     // 只有非_table类型才创建控制区域
                     if (!isTable) {
                         // 创建控制区域
+                        
                         const controlArea = document.createElement('div');
                         controlArea.className = 'control-area';
                         controlArea.id = controlId;
@@ -95,7 +98,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         controlArea.appendChild(chartToggleLabel);
                         
                         // 列选择下拉框（如果不是堆叠图表）
-                        if (!isStacked) {
+                        if (!isStacked && !isLine) {
                             const columnSelect = document.createElement('select');
                             columnSelect.className = 'column-select';
                             
@@ -287,11 +290,13 @@ function updateChart(tableId, chartId, columnIndex) {
     const isStacked = tableTitle.endsWith('_stacked');
     const isTable = tableTitle.endsWith('_table');
     const isIgnore = tableTitle.endsWith('_ignore');
-    const isBar = tableTitle.endsWith('_bar') || (!isStacked && !isTable && !isIgnore);
+    const isLine = tableTitle.endsWith('_line');
+    const isBar = tableTitle.endsWith('_bar') || (!isStacked && !isTable && !isIgnore && !isLine);
     
     // 清理标题
     tableTitle = tableTitle
         .replace('_bar', '')
+        .replace('_line', '')
         .replace('_stacked', '')
         .replace('_table', '')
         .replace('_ignore', '');
@@ -305,6 +310,8 @@ function updateChart(tableId, chartId, columnIndex) {
     
     if (isStacked) {
         // 100%堆叠柱状图
+        console.log(chartId, headers, "isStacked condition triggered", isStacked);
+
         const labels = data.map(row => row[0]);
         const datasets = headers.slice(1).map((header, index) => {
             const values = data.map(row => {
@@ -372,6 +379,7 @@ function updateChart(tableId, chartId, columnIndex) {
         });
     } else if (isBar) {
         // 普通柱状图
+        console.log(chartId, headers, "isBar condition triggered", isBar);
         const labels = data.map(row => row[0]);
         const datasets = [];
         const selectedColumns = (typeof columnIndex === 'number' && !isNaN(columnIndex)) ? 
@@ -443,6 +451,83 @@ function updateChart(tableId, chartId, columnIndex) {
                 }
             }
         });
+    } else if (isLine) {
+        
+        console.log(chartId, headers, "isLine condition triggered", isLine);
+
+        const labels = data.map(row => row[0]);
+        const datasets = [];
+        const selectedColumns = Array.from({length: headers.length - 1}, (_, i) => i + 1);
+        
+        selectedColumns.forEach((colIndex, index) => {
+            const values = data.map(row => {
+                const value = parseFloat(row[colIndex]);
+                return isNaN(value) ? 0 : value;
+            });
+            datasets.push({
+                label: headers[colIndex],
+                data: values,
+                borderColor: lineColors[index % lineColors.length],
+                backgroundColor: lineColors[index % lineColors.length],
+                fill: false,
+                tension: 0.1
+            });
+        });
+        
+        if (charts[chartId]) {
+            charts[chartId].destroy();
+        }
+        
+        charts[chartId] = new Chart(chartCanvas, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return value < 10 ? value.toFixed(1) : value.toLocaleString();
+                            },
+                            font: { size: 11 }
+                        }
+                    },
+                    x: {
+                        ticks: { maxRotation: 90, minRotation: 90, font: { size: 11 } }
+                    }
+                },
+                plugins: {
+                    legend: { display: true, position: 'top' },
+                    title: {
+                        display: true,
+                        text: tableTitle,
+                        font: { size: 16, weight: 'bold' },
+                        padding: { top: 10, bottom: 20 }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) label += ': ';
+                                if (context.parsed.y !== null) {
+                                    label += context.parsed.y.toLocaleString(undefined, {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2
+                                    });
+                                }
+                                return label;
+                            }
+                        }
+                    }
+                }
+            }
+        });
     }
+
     console.log('Chart created successfully for:', chartId);
 }

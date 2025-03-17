@@ -1,5 +1,6 @@
 import json
 from collections import defaultdict
+from datetime import datetime
 
 # 读取两个JSON文件
 with open('static/space_results.json', 'r', encoding='utf-8') as f:
@@ -37,6 +38,10 @@ for week in combined_data:
     result.append(week_data)
 result.sort(key=lambda x: x["周"])
 
+# 定义截止日期
+cutoff_date = datetime.strptime("2024-04-30", "%Y-%m-%d")
+cutoff2_date = datetime.strptime("2023-11-06", "%Y-%m-%d")
+
 # 计算wow和mom，创建单独的trailing_4_week数据结构
 trailing_data = []
 for i in range(len(result)):
@@ -50,13 +55,18 @@ for i in range(len(result)):
         "餐饮_trailing_4_week收入": catering_trailing_4
     }
     
+    # 将周转换为日期以进行比较
+    week_date = datetime.strptime(result[i]["周"], "%Y-%m-%d")
+    
     # 计算wow（与上周相比）
     if i > 0:
         prev_space = trailing_data[i-1]["场景_trailing_4_week收入"]
         prev_catering = trailing_data[i-1]["餐饮_trailing_4_week收入"]
         
-        week_trailing["场景_wow"] = (space_trailing_4 / prev_space - 1) if prev_space != 0 else 0
-        week_trailing["餐饮_wow"] = (catering_trailing_4 / prev_catering - 1) if prev_catering != 0 else 0
+        space_wow = (space_trailing_4 / prev_space - 1) * 100 if prev_space != 0 else 0
+        week_trailing["场景_wow"] = 0 if week_date <= cutoff_date else space_wow
+        catering_wow = (catering_trailing_4 / prev_catering - 1) * 100 if prev_catering != 0 else 0
+        week_trailing["餐饮_wow"] = 0 if week_date <= cutoff2_date else catering_wow
     else:
         week_trailing["场景_wow"] = 0
         week_trailing["餐饮_wow"] = 0
@@ -66,8 +76,10 @@ for i in range(len(result)):
         prev_4_space = trailing_data[i-4]["场景_trailing_4_week收入"]
         prev_4_catering = trailing_data[i-4]["餐饮_trailing_4_week收入"]
         
-        week_trailing["场景_mom"] = (space_trailing_4 / prev_4_space - 1) if prev_4_space != 0 else 0
-        week_trailing["餐饮_mom"] = (catering_trailing_4 / prev_4_catering - 1) if prev_4_catering != 0 else 0
+        space_mom = (space_trailing_4 / prev_4_space - 1) * 100 if prev_4_space != 0 else 0
+        week_trailing["场景_mom"] = 0 if week_date <= cutoff_date else space_mom
+        catering_mom = (catering_trailing_4 / prev_4_catering - 1) * 100 if prev_4_catering != 0 else 0
+        week_trailing["餐饮_mom"] = 0 if week_date <= cutoff2_date else catering_mom
     else:
         week_trailing["场景_mom"] = 0
         week_trailing["餐饮_mom"] = 0
@@ -90,13 +102,13 @@ mom_result = [{
 # 构建输出结构
 output_data = {
     "销售收入_stacked": result,
-    "过去四周收入周环比_line": wow_result,
-    "过去四周收入月环比_line": mom_result
+    "过去四周收入周环比(%)_line": wow_result,
+    "过去四周收入月环比(%)_line": mom_result
 }
 
 # 保存到新的JSON文件
 with open('static/group_results.json', 'w', encoding='utf-8') as f:
-    json.dump(output_data, f, ensure_ascii=False, indent=2)
+    json.dump({'集团财务':output_data}, f, ensure_ascii=False, indent=2)
 
 # 打印结果供参考
 print("合并和计算完成，已保存到 static/group_results.json")
