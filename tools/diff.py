@@ -1,76 +1,88 @@
 import pandas as pd
 import sys
+import os
 
-# python3 diff.py ../db/Raw_membership.csv ../db/new_membership.csv
-
-
-def compare_csvs(old_file, new_file):
-    # 读取两个 CSV 文件
+def compare_csvs(old_file, new_file, type_name, filter_col=None, compare_col=None):
+    if not os.path.exists(new_file):
+        print(f"{new_file} 不存在，跳过 {type_name} 对比")
+        return
+    
     try:
-        df_old = pd.read_csv(old_file)
-        df_new = pd.read_csv(new_file)
+        df_old = pd.read_csv(old_file, low_memory=False, parse_dates=[filter_col] if filter_col else None, 
+                            date_format='%m/%d/%y')
+        df_new = pd.read_csv(new_file, low_memory=False, parse_dates=[filter_col] if filter_col else None, 
+                            date_format='%m/%d/%y')
     except Exception as e:
-        print(f"读取文件失败: {e}")
+        print(f"读取 {type_name} 文件失败: {e}")
         return
 
-    # 1. 检查列的增减和变化
     old_columns = set(df_old.columns)
     new_columns = set(df_new.columns)
-
-    # 列新增
     added_columns = new_columns - old_columns
-    if added_columns:
-        print(f"列新增: {', '.join(added_columns)}")
-
-    # 列减少
     deleted_columns = old_columns - new_columns
+    
+    if added_columns:
+        print(f"{type_name} 列新增: {', '.join(added_columns)}")
     if deleted_columns:
-        print(f"列减少: {', '.join(deleted_columns)}")
+        print(f"{type_name} 列减少: {', '.join(deleted_columns)}")
+    if not added_columns and not deleted_columns:
+        print(f"{type_name} 列无变化")
 
-    # 检查列是否一致
-    if old_columns == new_columns:
-        print("列无变化")
-    else:
-        print("列发生变化，请检查上述增减情况")
+    if filter_col:
+        if filter_col not in df_old.columns or filter_col not in df_new.columns:
+            print(f"错误: {type_name} 文件中缺少 '{filter_col}' 列")
+            return
+        
+        old_values = set(df_old[filter_col].dropna().astype(str))
+        new_values = set(df_new[filter_col].dropna().astype(str))
+        common_values = old_values & new_values
+        
+        print(f"调试信息 - {type_name} {filter_col}:")
+        print(f"旧文件唯一值数量: {len(old_values)}, 示例: {list(old_values)[:5]}")
+        print(f"新文件唯一值数量: {len(new_values)}, 示例: {list(new_values)[:5]}")
+        print(f"重合值数量: {len(common_values)}, 示例: {list(common_values)[:5]}")
+        
+        if not common_values:
+            print(f"{type_name} 无重合的 {filter_col}")
+            return
+        
+        df_old = df_old[df_old[filter_col].astype(str).isin(common_values)]
+        df_new = df_new[df_new[filter_col].astype(str).isin(common_values)]
 
-    # 2. 只检查"会员号"列的差异
-    if '会员号' not in df_old.columns or '会员号' not in df_new.columns:
-        print("错误: 一个或两个文件中缺少 '会员号' 列")
+    if compare_col not in df_old.columns or compare_col not in df_new.columns:
+        print(f"错误: {type_name} 文件中缺少 '{compare_col}' 列")
         return
 
-    # 提取会员号并转换为集合
-    old_members = set(df_old['会员号'].dropna().astype(str))  # 转换为字符串，避免类型问题
-    new_members = set(df_new['会员号'].dropna().astype(str))
+    old_items = set(df_old[compare_col].dropna().astype(str))
+    new_items = set(df_new[compare_col].dropna().astype(str))
 
-    # 新增会员（在新文件中存在，但在旧文件中不存在）
-    added_members = new_members - old_members
-    if added_members:
-        print(f"新增 {len(added_members)} 个会员")
+    added_items = new_items - old_items
+    deleted_items = old_items - new_items
+    
+    item_name = "会员" if compare_col == "会员号" else "订单"
+    if added_items:
+        print(f"{type_name} 新增 {len(added_items)} 个{item_name}")
+        print(f"新增{item_name}示例: {list(added_items)[:5]}")  # 输出新增订单号
     else:
-        print("无新增会员")
-
-    # 减少会员（在旧文件中存在，但在新文件中不存在）
-    deleted_members = old_members - new_members
-    if deleted_members:
-        print(f"减少 {len(deleted_members)} 个会员")
+        print(f"{type_name} 无新增{item_name}")
+    if deleted_items:
+        print(f"{type_name} 减少 {len(deleted_items)} 个{item_name}")
+        print(f"减少{item_name}示例: {list(deleted_items)[:5]}")  # 输出减少订单号
     else:
-        print("无减少会员")
-
-    # 检查是否完全匹配（1对1匹配）
-    if len(old_members) == len(new_members) and old_members == new_members:
-        print("会员号完全匹配，无变化")
+        print(f"{type_name} 无减少{item_name}")
+    if not added_items and not deleted_items:
+        print(f"{type_name} {compare_col} 完全匹配，无变化")
 
 def main():
-    # 检查命令行参数
-    if len(sys.argv) != 3:
-        print("用法: python diff.py old.csv new.csv")
-        sys.exit(1)
-
-    old_file = sys.argv[1]
-    new_file = sys.argv[2]
-
-    # 执行对比
-    compare_csvs(old_file, new_file)
+    db_path = "../db/"
+    compare_csvs(db_path + "raw_membership.csv", db_path + "new_membership.csv", 
+                "membership", compare_col="会员号")
+    print("\n" + "-"*50 + "\n")
+    compare_csvs(db_path + "raw_flipos.csv", db_path + "new_flipos.csv", 
+                "flipos", filter_col="对账日期", compare_col="订单号")
+    print("\n" + "-"*50 + "\n")
+    compare_csvs(db_path + "raw_space.csv", db_path + "new_space.csv", 
+                "space", filter_col="预定日期", compare_col="订单编号")
 
 if __name__ == "__main__":
     main()

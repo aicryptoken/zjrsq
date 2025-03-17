@@ -100,11 +100,11 @@ def financial_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
 
 def order_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     """
-    订单分析：仅保留订单来源分析，按周拆分为销售金额、订单数量和订单单价
+    订单分析：服务方式分析，按周拆分为销售金额、订单数量和订单单价
     """
     
     # 销售收入分析
-    source_sales = catering_df.groupby(['订单周', '订单来源']).agg(
+    source_sales = catering_df.groupby(['订单周', '服务方式']).agg(
         销售收入=('实收', 'sum')
     ).unstack(fill_value=0)
     source_sales.columns = [col[1] for col in source_sales.columns]
@@ -112,7 +112,7 @@ def order_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     source_sales['订单周'] = source_sales['订单周'].astype(str)
 
     # 订单数量分析
-    source_orders = catering_df.groupby(['订单周', '订单来源']).agg(
+    source_orders = catering_df.groupby(['订单周', '服务方式']).agg(
         订单数量=('订单号', 'count')
     ).unstack(fill_value=0)
     source_orders.columns = [col[1] for col in source_orders.columns]
@@ -127,9 +127,9 @@ def order_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     source_price = source_price.fillna(0)  # 将NaN值填充为0
 
     return {
-        '销售收入_来源_stacked': source_sales,
-        '订单量_来源_stacked': source_orders,
-        '订单单价_来源_bar': source_price
+        '销售收入_服务方式_stacked': source_sales,
+        '订单量_服务方式_stacked': source_orders,
+        '订单单价_服务方式_bar': source_price
     }
 
 def product_analysis(catering_df: pd.DataFrame, conn) -> dict:
@@ -181,9 +181,6 @@ def product_analysis(catering_df: pd.DataFrame, conn) -> dict:
 
 def marketing_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     """营销分析，移除重复的促销类型"""
-    # 预处理时间
-    
-    
 
     # 处理促销类型，去除重复的优惠信息
     def deduplicate_promotions(promo):
@@ -216,9 +213,8 @@ def user_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     现在修改为基于catering_df计算RFM用户价值
     注意参数：lamda，weight，以及用户价值的算法
     """
-
     catering_df['member_id'] = np.where(
-        catering_df['会员号'].isna(),
+        catering_df['会员号'].isna() | catering_df['会员号'].isnull() | (catering_df['会员号'] == ''),
         catering_df.index.map(lambda x: f'8888000{x:04d}'),
         catering_df['会员号']
     )
@@ -240,34 +236,27 @@ def user_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     
     # 计算最近购买时间指数: e^(-λ * Recency), λ=0.0115对应60天下降到50
     lambda_param = 0.0115
-    rfm_analysis['消费间隔指数'] = np.exp(-lambda_param * rfm_analysis['Recency']) * 100
+    rfm_analysis['最近一次消费指数'] = np.exp(-lambda_param * rfm_analysis['Recency']) * 100
     
-    # 计算原始的消费力和消费频率指数
+    # 计算原始的消费力和消费频次指数
     rfm_analysis['monetary_raw'] = np.log(rfm_analysis['总消费金额'] + 1)
-    rfm_analysis['frequency_raw'] = np.log(1 + rfm_analysis['消费次数'])
-    
-    # 进行min-max标准化
-    monetary_min = rfm_analysis['monetary_raw'].min()
+    rfm_analysis['frequency_raw'] = np.log(rfm_analysis['消费次数'] + 1)
+  
+    # 新算法：以理论最小值 0 为基准，最大值拉到 100
     monetary_max = rfm_analysis['monetary_raw'].max()
-    frequency_min = rfm_analysis['frequency_raw'].min()
+    rfm_analysis['消费力指数'] = (rfm_analysis['monetary_raw'] / monetary_max) * 100
+    
     frequency_max = rfm_analysis['frequency_raw'].max()
-    
-    rfm_analysis['消费力指数'] = (
-        (rfm_analysis['monetary_raw'] - monetary_min) / (monetary_max - monetary_min)
-    ) * 100 if monetary_max != monetary_min else 0
-    
-    rfm_analysis['消费频率指数'] = (
-        (rfm_analysis['frequency_raw'] - frequency_min) / (frequency_max - frequency_min)
-    ) * 100 if frequency_max != frequency_min else 0
-    
-    # 计算user_value
+    rfm_analysis['消费频次指数'] = (rfm_analysis['frequency_raw'] / frequency_max) * 100
+     
+    # 加权计算user_value
     weight_monetary = 0.4  # 餐饮用户单价较低，频次更重要
     weight_frequency = 1 - weight_monetary  
     
     rfm_analysis['用户价值'] = (
-        rfm_analysis['消费间隔指数'] * 
+        rfm_analysis['最近一次消费指数'] * 
         (rfm_analysis['消费力指数'] * weight_monetary + 
-         rfm_analysis['消费频率指数'] * weight_frequency)
+         rfm_analysis['消费频次指数'] * weight_frequency)
     ) / 100
     
     # 创建0-100的区间（以1为间隔）
@@ -275,9 +264,9 @@ def user_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     
     # 对四个指标进行分布统计
     value_dist = pd.cut(rfm_analysis['用户价值'], bins=bins, include_lowest=True).value_counts().sort_index()
-    recency_dist = pd.cut(rfm_analysis['消费间隔指数'], bins=bins, include_lowest=True).value_counts().sort_index()
+    recency_dist = pd.cut(rfm_analysis['最近一次消费指数'], bins=bins, include_lowest=True).value_counts().sort_index()
     monetary_dist = pd.cut(rfm_analysis['消费力指数'], bins=bins, include_lowest=True).value_counts().sort_index()
-    frequency_dist = pd.cut(rfm_analysis['消费频率指数'], bins=bins, include_lowest=True).value_counts().sort_index()
+    frequency_dist = pd.cut(rfm_analysis['消费频次指数'], bins=bins, include_lowest=True).value_counts().sort_index()
     
     # 创建包含0-100的第一列
     score_range = pd.Series(range(1, 101), name='分数区间')
@@ -286,9 +275,9 @@ def user_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     distribution_result = pd.DataFrame({
         '分数区间': score_range,
         '用户价值分布': value_dist.values,
-        '消费间隔指数分布': recency_dist.values,
+        '最近一次消费指数分布': recency_dist.values,
         '消费力指数分布': monetary_dist.values,
-        '消费频率指数分布': frequency_dist.values
+        '消费频次指数分布': frequency_dist.values
     })
      
     return {
@@ -304,6 +293,9 @@ def analyze(conn):
         catering_df['订单月份'] = catering_df['下单时间'].dt.to_period('M')
         catering_df['订单周'] = catering_df['下单时间'].dt.to_period('W-MON').apply(lambda x: x.start_time.date())
         
+        # 删除报损/领用的订单
+        catering_df.drop(catering_df[catering_df['服务方式'] == '报损'].index, inplace=True)
+
         financial_results = financial_analysis(catering_df)
         order_results = order_analysis(catering_df)
         product_results = product_analysis(catering_df, conn)

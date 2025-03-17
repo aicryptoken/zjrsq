@@ -29,7 +29,7 @@ def preprocess_datetime(df: pd.DataFrame) -> pd.DataFrame:
 
 def calculate_user_intervals(orders_df: pd.DataFrame) -> pd.DataFrame:
     """计算用户订单间隔"""
-    orders_df['上次下单日期'] = orders_df.groupby('会员号')['创建时间'].shift(1)
+    orders_df['上次下单日期'] = orders_df.groupby('手机号')['创建时间'].shift(1)
     orders_df['order_interval'] = (orders_df['创建时间'] - orders_df['上次下单日期']).dt.days
     return orders_df
 
@@ -40,7 +40,7 @@ def analyze_order(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     space_df['升舱标记'] = (space_df['升舱'] == '是').astype(int)
     
     # 1. 升舱分析 - 按月和订单商品名统计
-    # 升舱订单数表
+    # 升舱订单量表
     upgrade_count = pd.pivot_table(
         space_df,
         values='升舱标记',
@@ -60,7 +60,7 @@ def analyze_order(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
         fill_value=0
     ).reset_index()
     
-    # 升舱订单数占比表
+    # 升舱订单量占比表
     upgrade_temp = pd.pivot_table(
         space_df,
         values=['升舱标记', '订单编号'],
@@ -124,7 +124,7 @@ def analyze_order(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     ).reset_index()
     
     return {
-        '月升舱订单数_bar': upgrade_count,
+        '月升舱订单量_bar': upgrade_count,
         '月升舱金额_bar': upgrade_amount,
         '月升舱订单占比_bar': upgrade_ratio,
         '月加钟收入_bar': overtime_revenue,
@@ -137,8 +137,8 @@ def analyze_member(member_df: pd.DataFrame, db_path: str) -> Dict[str, pd.DataFr
     """合并后的会员分析函数"""
     member_df = calculate_user_intervals(member_df)
     unique_months = sorted(member_df['booking_month'].unique())
-    last_order_dates = member_df.groupby('会员号')['创建时间'].max().reset_index()
-    first_order_dates = member_df.groupby('会员号')['创建时间'].min().reset_index()
+    last_order_dates = member_df.groupby('手机号')['创建时间'].max().reset_index()
+    first_order_dates = member_df.groupby('手机号')['创建时间'].min().reset_index()
     
     # 初始化结果列表
     monthly_metrics = []
@@ -150,30 +150,30 @@ def analyze_member(member_df: pd.DataFrame, db_path: str) -> Dict[str, pd.DataFr
         # 当前月数据
         current_month_orders = member_df[(member_df['创建时间'] >= month_start) & 
                                        (member_df['创建时间'] <= month_end)]
-        active_users = current_month_orders['会员号'].nunique()
+        active_users = current_month_orders['手机号'].nunique()
         
         # 新增用户
         new_users = len(first_order_dates[(first_order_dates['创建时间'] >= month_start) &
-                                        (first_order_dates['创建时间'] <= month_end)]['会员号'].unique())
+                                        (first_order_dates['创建时间'] <= month_end)]['手机号'].unique())
         
         # 流失相关
         churn_30_60 = len(last_order_dates[(last_order_dates['创建时间'] < month_end - timedelta(days=30)) &
-                                         (last_order_dates['创建时间'] >= month_end - timedelta(days=60))]['会员号'].unique())
+                                         (last_order_dates['创建时间'] >= month_end - timedelta(days=60))]['手机号'].unique())
         churn_60_90 = len(last_order_dates[(last_order_dates['创建时间'] < month_end - timedelta(days=60)) &
-                                         (last_order_dates['创建时间'] >= month_end - timedelta(days=90))]['会员号'].unique())
-        churn_long = len(last_order_dates[last_order_dates['创建时间'] < month_end - timedelta(days=120)]['会员号'].unique())
+                                         (last_order_dates['创建时间'] >= month_end - timedelta(days=90))]['手机号'].unique())
+        churn_long = len(last_order_dates[last_order_dates['创建时间'] < month_end - timedelta(days=120)]['手机号'].unique())
         
         # 重新激活用户
         prev_users = member_df[(member_df['创建时间'] < month_start - timedelta(days=90)) &
-                             (member_df['创建时间'] >= month_start - timedelta(days=180))]['会员号'].unique()
-        reactivated = len(current_month_orders[current_month_orders['会员号'].isin(prev_users)]['会员号'].unique())
+                             (member_df['创建时间'] >= month_start - timedelta(days=180))]['手机号'].unique()
+        reactivated = len(current_month_orders[current_month_orders['手机号'].isin(prev_users)]['手机号'].unique())
         
         # 计算回购用户
-        past_users = member_df[member_df['创建时间'] < month_start]['会员号'].unique()
-        current_orders = current_month_orders[current_month_orders['会员号'].isin(past_users)].sort_values('创建时间')
-        repurchase_users = len(current_orders.groupby('会员号').filter(
+        past_users = member_df[member_df['创建时间'] < month_start]['手机号'].unique()
+        current_orders = current_month_orders[current_month_orders['手机号'].isin(past_users)].sort_values('创建时间')
+        repurchase_users = len(current_orders.groupby('手机号').filter(
             lambda x: (x['创建时间'].max() - x['创建时间'].min()).days >= 1
-        )['会员号'].unique())
+        )['手机号'].unique())
         
         monthly_metrics.append({
             'booking_month': str(period_month),
@@ -192,7 +192,7 @@ def analyze_member(member_df: pd.DataFrame, db_path: str) -> Dict[str, pd.DataFr
     monthly_level_stats = member_df.groupby(['booking_month', '等级']).agg({
         '实付金额': ['mean', 'sum'],
         '订单编号': 'count',
-        '会员号': 'nunique'
+        '手机号': 'nunique'
     }).reset_index()
     monthly_level_stats.columns = ['月份', '等级', '平均收入', '总收入', '订单量', '独立会员数量']
     
@@ -212,12 +212,12 @@ def analyze_member(member_df: pd.DataFrame, db_path: str) -> Dict[str, pd.DataFr
     for i, month in enumerate(unique_months[1:], 1):
         prev_month = unique_months[i-1]
         prev_new_users = member_df[(member_df['booking_month'] == prev_month) & 
-                                 (member_df['会员号'].isin(first_order_dates[
+                                 (member_df['手机号'].isin(first_order_dates[
                                      (first_order_dates['创建时间'] >= prev_month.to_timestamp()) &
                                      (first_order_dates['创建时间'] <= prev_month.to_timestamp('M'))
-                                 ]['会员号']))]['会员号'].unique()
+                                 ]['手机号']))]['手机号'].unique()
         current_active = member_df[(member_df['booking_month'] == month) & 
-                                 (member_df['会员号'].isin(prev_new_users))]['会员号'].nunique()
+                                 (member_df['手机号'].isin(prev_new_users))]['手机号'].nunique()
         rates_df.loc[i, '一个月留存率'] = current_active / len(prev_new_users) * 100 if len(prev_new_users) > 0 else 0
     
     # 处理NaN值
@@ -227,7 +227,7 @@ def analyze_member(member_df: pd.DataFrame, db_path: str) -> Dict[str, pd.DataFr
     # 返回结果字典
     return {
         # '用户留存与流失_bar': counts_df,  # 展示不用显示
-        '留存与流失率（表格）_bar': rates_df,
+        '留存与流失率_table': rates_df,
         '月收入占比_stacked': total_revenue_table,
         '月单量占比_stacked': order_volume_table
         # '每月平均收入_bar': avg_revenue_table, # 展示不用显示
@@ -241,46 +241,39 @@ def analyze_users(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     # 过滤过去6个月的数据
     df_filtered = space_df[space_df['创建时间'] >= begin_day].copy()
     
-    # 按会员号聚合计算所需指标
-    rfm_analysis = df_filtered.groupby('会员号').agg({
+    # 按手机号聚合计算所需指标
+    rfm_analysis = df_filtered.groupby('手机号').agg({
         '创建时间': 'max',  # 最近一次消费时间
         '实付金额': 'sum',  # 总消费金额
         '订单编号': 'count'  # 消费次数
     }).reset_index()
     
     # 重命名列
-    rfm_analysis.columns = ['会员号', '最近消费时间', '总消费金额', '消费次数']
+    rfm_analysis.columns = ['手机号', '最近消费时间', '总消费金额', '消费次数']
     rfm_analysis['Recency'] = (today - rfm_analysis['最近消费时间']).dt.days
     # 计算最近购买时间指数: e^(-λ * Recency), λ=0.0115，对应60天指数下降到50分位
     lambda_param = 0.0115
-    rfm_analysis['消费间隔指数'] = np.exp(-lambda_param * rfm_analysis['Recency']) * 100
+    rfm_analysis['最近一次消费指数'] = np.exp(-lambda_param * rfm_analysis['Recency']) * 100
     
-    # 计算原始的消费力和消费频率指数
+    # 计算原始的消费力和消费频次指数
     rfm_analysis['monetary_raw'] = np.log(rfm_analysis['总消费金额'] + 1)
-    rfm_analysis['frequency_raw'] = np.log(1 + rfm_analysis['消费次数'])
-    
-    # 进行min-max标准化
-    monetary_min = rfm_analysis['monetary_raw'].min()
+    rfm_analysis['frequency_raw'] = np.log(rfm_analysis['消费次数'] + 1)
+
+    # 新算法：以理论最小值 0 为基准，最大值拉到 100
     monetary_max = rfm_analysis['monetary_raw'].max()
-    frequency_min = rfm_analysis['frequency_raw'].min()
+    rfm_analysis['消费力指数'] = (rfm_analysis['monetary_raw'] / monetary_max) * 100
+    
     frequency_max = rfm_analysis['frequency_raw'].max()
-    
-    rfm_analysis['消费力指数'] = (
-        (rfm_analysis['monetary_raw'] - monetary_min) / (monetary_max - monetary_min)
-    ) * 100 if monetary_max != monetary_min else 0
-    
-    rfm_analysis['消费频率指数'] = (
-        (rfm_analysis['frequency_raw'] - frequency_min) / (frequency_max - frequency_min)
-    ) * 100  if frequency_max != frequency_min else 0
-    
-    # 计算user_value
-    weight_monetary = 0.6  # w = 0.6
-    weight_frequency = 1 - weight_monetary  # 1 - w
+    rfm_analysis['消费频次指数'] = (rfm_analysis['frequency_raw'] / frequency_max) * 100
+     
+    # 加权计算user_value
+    weight_monetary = 0.6  
+    weight_frequency = 1 - weight_monetary
     
     rfm_analysis['用户价值'] = (
-        rfm_analysis['消费间隔指数'] * 
+        rfm_analysis['最近一次消费指数'] * 
         (rfm_analysis['消费力指数'] * weight_monetary + 
-         rfm_analysis['消费频率指数'] * weight_frequency)
+         rfm_analysis['消费频次指数'] * weight_frequency)
     ) / 100
 
     # 创建0-100的区间（以1为间隔）
@@ -288,9 +281,9 @@ def analyze_users(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     
     # 对四个指标进行分布统计
     value_dist = pd.cut(rfm_analysis['用户价值'], bins=bins, include_lowest=True).value_counts().sort_index()
-    recency_dist = pd.cut(rfm_analysis['消费间隔指数'], bins=bins, include_lowest=True).value_counts().sort_index()
+    recency_dist = pd.cut(rfm_analysis['最近一次消费指数'], bins=bins, include_lowest=True).value_counts().sort_index()
     monetary_dist = pd.cut(rfm_analysis['消费力指数'], bins=bins, include_lowest=True).value_counts().sort_index()
-    frequency_dist = pd.cut(rfm_analysis['消费频率指数'], bins=bins, include_lowest=True).value_counts().sort_index()
+    frequency_dist = pd.cut(rfm_analysis['消费频次指数'], bins=bins, include_lowest=True).value_counts().sort_index()
     
     # 创建包含0-99的第一列（匹配100个区间）
     score_range = pd.Series(range(1, 101), name='分数区间')
@@ -299,9 +292,9 @@ def analyze_users(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     distribution_result = pd.DataFrame({
         '分数区间': score_range,
         '用户价值分布': value_dist.values,
-        '消费间隔指数分布': recency_dist.values,
+        '最后一次消费指数分布': recency_dist.values,
         '消费力指数分布': monetary_dist.values,
-        '消费频率指数分布': frequency_dist.values
+        '消费频次指数分布': frequency_dist.values
     })
         
     return {
@@ -314,7 +307,7 @@ def analyze_weekly_finance(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     weekly_analysis = space_df.groupby('booking_week').agg({
         '订单编号': 'count',  
         '实付金额': ['sum', 'mean'],
-        '会员号': 'nunique',
+        '手机号': 'nunique',
         '实际时长': ['sum', 'mean']
     })
     
@@ -353,11 +346,11 @@ def analyze_space(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     total_orders = peak_analysis['订单编号'].sum()
     peak_analysis['收入占比'] = np.where(total_revenue == 0, 0, peak_analysis['实付金额'] / total_revenue * 100)
     peak_analysis['订单占比'] = np.where(total_orders == 0, 0, peak_analysis['订单编号'] / total_orders * 100)
-    peak_analysis.columns = ['开始使用时刻', '订单数', '收入', '收入占比', '订单占比']
+    peak_analysis.columns = ['开始使用时刻', '订单量', '收入', '收入占比', '订单占比']
     
     results = {'高峰时段分析_bar': peak_analysis}
 
-    # 基本指标分析 (订单数, 收入, 总时长, 单均时长，利用率)
+    # 基本指标分析 (订单量, 收入, 总时长, 单均时长，利用率)
     for metric in ['收入', '订单量','总时长', '单均时长', '利用率']:
         try:
             if metric == '订单量':
@@ -590,15 +583,18 @@ def convert_df_to_dict(data):
 def analyze(conn):
     try:
         space_df = pd.read_sql_query("SELECT * FROM Space", conn)
-        member_df = pd.read_sql_query("SELECT 会员号, 等级 FROM Member", conn)
+        member_df = pd.read_sql_query("SELECT 手机号, 等级 FROM Member", conn)
 
-        space_df = space_df.merge(member_df, on='会员号', how='left')
-        space_df['等级'] = space_df['等级'].astype(str)
-        space_df['等级'] = space_df['等级'].fillna('未注册用户')
-        space_df['等级'] = space_df['等级'].replace({'2.0': '关联户', '1.0': '微信注册用户', 'nan': '未注册用户'})
-        space_df = space_df[space_df['等级'] != '0.0']
+        space_df.set_index("手机号", inplace=True)
+        space_df.index = space_df.index.astype(str)
+    
+        space_df = space_df.merge(member_df, left_index=True, right_on='手机号', how='left')
+        space_df['等级'] = space_df['等级'].fillna("未注册用户")    
+        space_df = space_df[space_df['等级'] != 'ideapod']
 
-        space_df['订单商品名'] = space_df['订单商品名'].fillna('').str.strip().str.replace('上海洛克外滩店-', '').str.replace('the Box', '')
+        space_df['订单商品名'] = space_df['订单商品名'].fillna('').str.strip().str.replace('上海洛克外滩店-', '').str.replace('ideaPod 二楼专注-', '').str.replace(' the Box', '')
+        # 名字修改对应关系需要确认
+        space_df['订单商品名'] = space_df['订单商品名'].replace({'丛林心流舱·日':'心流舱·巴赫','丛林心流舱·月':'心流舱·荣格','丛林心流舱·星':'心流舱·雨果','丛林心流舱·辰':'心流舱·牛顿','一层半帘区1':'蘑菇半帘区'})
         space_df['订单商品名'] = space_df['订单商品名'].apply(
             lambda x: '图书馆专注区' if x == '图书馆专注' else x
         )
@@ -627,7 +623,6 @@ def analyze(conn):
             '空间产品': space_results,
             '会员分析': member_results,
             '用户价值': user_results
-
         }
 
         processed_results = {}
