@@ -1,7 +1,6 @@
 import sqlite3
 from flask import Flask, render_template
 import json
-import meta  # 保留，因为 /meta 路由仍然需要
 
 app = Flask(__name__)
 
