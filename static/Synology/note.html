@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ideapod数据分析</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #333;
+            padding-bottom: 10px;
+        }
+
+        h3 {
+            color: #444;
+            margin-top: 30px;
+        }
+
+        h4 {
+            color: #666;
+            margin: 15px 0 10px 0;
+        }
+
+        ul,
+        ol {
+            padding-left: 30px;
+        }
+
+        li {
+            margin: 15px 0;
+        }
+
+        p {
+            margin: 5px 0;
+        }
+
+        .example {
+            color: #555;
+            font-style: italic;
+            margin-left: 20px;
+        }
+
+        .section {
+            background-color: #f9f9f9;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>数据说明文档</h1>
+    <h3>基础说明</h3>
+    <ul>
+        <li>
+            <p>每周一是一周的开始；</p>
+        </li>
+        <li>
+            <p>统计中不包含公司内部人员使用数据；</p>
+        </li>
+        <li>
+            <p>柱形图：量价额等数据；</p>
+        </li>
+        <li>
+            <p>线形图：增长率等数据；</p>
+        </li>
+        <li>
+            <p>堆积柱形图：占比类数据；</p>
+        </li>
+        <li>
+            <p>部分图表的呈现方式仍有待调整。</p>
+        </li>
+    </ul>
+
+    <div class="section">
+        <h3><a href="group.html">集团数据</a></h3>
+
+        <h4>部分数据说明：</h4>
+        <ol>
+            <li>
+                <p>过去四周收入周环比(%):</p>
+                <div class="example">
+                    示例：（2月18日到3月11日4周收入）/（2月11日到3月4日4周收入）-1<br>
+                    目的：直接计算周环比，%数值波动很大；算法通过引入公共周进行平滑。
+                </div>
+            </li>
+            <li>
+                <p>过去四周收入月环比(%):</p>
+                <div class="example">
+                    示例：（2月18日到3月11日4周收入）/（1月21日到2月11日4周收入）-1<br>
+                    结果：与月度数据环比接近。
+                </div>
+            </li>
+        </ol>
+
+        <h4>遗留问题：</h4>
+        <ul>
+            <li>餐饮收入部分含有场景销售，可能需要剔除。</li>
+        </ul>
+    </div>
+
+    <div class="section">
+        <h3><a href="space.html">场景数据</a></h3>
+        <h4>部分数据说明：</h4>
+        <ol>
+            <li>
+                <p>会员分析 - 留存和流失 - 一个月留存率:</p>
+
+                <div class="example">
+                    示例：上个月100个新增客户中，有n个在这个月有消费记录。
+
+                </div>
+            </li>
+            <li>
+                <p>会员分析 - 留存和流失 - 回购率:</p>
+                <div class="example">
+                    示例：本月100个活跃客户中，有n个是老客户。
+                    <br>老客户定义：本月前消费过的客户 + 本月在不同日期消费过两次以上的新客户
+
+                </div>
+            </li>
+            <li>
+                <p>会员分析 - 留存和流失 - 30天流失率:</p>
+
+                <div class="example">
+                    示例：上个月曾消费过的100个客户中，n个在本月没有消费记录。
+                    <br>注：上个月：30-60天；本月：30天内。
+
+                </div>
+            </li>
+            <li>
+                <p>会员分析 - 留存和流失 - 60天流失率:</p>
+
+                <div class="example">
+                    示例：上上月曾消费过的100个客户中，n个在上月没有消费，且本月也没激活。
+                    <br>注：上上月：60-90天；上月：30-60天；本月：30天内。
+
+                </div>
+            </li>
+            <li>
+                <p>用户分析 - RFM模型</p>
+
+                <div class="example">
+                    见最下面解释。
+
+                </div>
+            </li>
+        </ol>
+
+        <h4>遗留问题：</h4>
+        <ul>
+            <li>升舱和加钟数据分析和展示需要根据运营需要做调整。</li>
+            <li>空间各区利用率，日内和周内利用率数据需根据运营需要做调整。</li>
+        </ul>
+    </div>
+    <div class="section">
+        <h3><a href="space.html">餐饮数据</a></h3>
+        <h4>部分数据说明：</h4>
+        <ol>
+            <li>
+                <p>用户分析 - RFM模型:</p>
+                <div class="example">
+                    见最下面解释。
+
+                </div>
+            </li>
+        </ol>
+        <h4>遗留问题：</h4>
+        <ul>
+            <li>销售收入按服务方式拆分没有太大意义，数据原本计算分析不同服务的量和价的差异。</li>
+            <li>餐饮产品需要更多标签化数据，从产品，营销，口味，组合等多个角度增加分析。</li>
+            <li>促销优惠分析由于标签重合和模糊，比较难归类，需要人工标注。</li>
+        </ul>
+    </div>
+    <div class="section">
+        <h3>用户价值RFM模型</h3>
+        <h4>模型说明：</h4>
+        <p>用户价值分析的时间跨度为过去半年（180天）。</p>
+        <ol>
+            <li>
+                <p>Recency（最近一次消费指数）- 用户上一次消费间隔天数</p>
+                <div class="example">
+                    指标目的：越近消费的用户价值越高；但间隔3天和5天的差距不应太大<br>
+                    R_score = e^(-λ * Recency)； λ = 0.015<br>
+                    指标区间：0-1<br>
+                    指标含义：间隔1天用户，打分接近1；间隔60天的，打分约为0.5
+                </div>
+            </li>
+            <img src="r_score.png",alt="最近一次消费指数" width="500" height="300">
+            <li>
+                <p>Frequency （消费频次指数）- 时间区间内消费次数</p>
+                <div class="example">
+                    指标目的：次数0到1的用户是消费和不消费；1到2是无回购和有回购；次数越多，边际价值衰减加快<br>
+                    F_score = log (Freqency +1)<br>
+                    指标区间：0-1<br>
+                    指标含义：没消费打分是0，消费1次是0.30，2次 0.47
+                </div>
+            </li>
+            <img src="fm_score.png",alt="消费力和消费频次指数" width="500" height="300">
+            <li>
+                <p>Monetary （消费力指数）- 时间区间内消费总金额</p>
+                <div class="example">
+                    指标目的：金额越高，边际价值衰减加快<br>
+                    M_score = log (Monetary +1)<br>
+                    指标区间：0-1<br>
+                    指标含义：没消费打分是0，消费30元约1.5，100元约2.0，1000元约3.0
+                </div>
+            </li>
+            <li>
+                <p>用户价值 - 综合RFM分数</p>
+                <div class="example">
+                    <strong>指标目的：综合衡量用户价值，未来可用于细化用户管理，活动促销等<br></strong>
+                    公式：用户价值 = R_score * (F_score * weight + M_score * (1-weight))<br>
+                    将所有指标按各自数值分布拉伸到0-100（即最小值为0，最大值为100）<br>
+                    含义：强化用户留存的重要性。场景用户weight为0.4，强调金额；餐饮用户weight为0.6，强调频次<br>
+                </div>
+            </li>
+        </ol>
+        <h4>指标改进：</h4>
+        <ul>
+            <li>备选公式：三个数值直接加权相加。</li>
+            <li>调参：基于实际运营和业务需要调整；例如调整λ，改变R_score衰减速度。</li>
+        </ul>
+    </div>
+</body>
+
+</html>

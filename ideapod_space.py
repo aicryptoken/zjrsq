@@ -169,11 +169,19 @@ def analyze_member(member_df: pd.DataFrame, db_path: str) -> Dict[str, pd.DataFr
         reactivated = len(current_month_orders[current_month_orders['手机号'].isin(prev_users)]['手机号'].unique())
         
         # 计算回购用户
+        # 老用户：本月前有消费记录且本月有消费
         past_users = member_df[member_df['创建时间'] < month_start]['手机号'].unique()
-        current_orders = current_month_orders[current_month_orders['手机号'].isin(past_users)].sort_values('创建时间')
-        repurchase_users = len(current_orders.groupby('手机号').filter(
-            lambda x: (x['创建时间'].max() - x['创建时间'].min()).days >= 1
-        )['手机号'].unique())
+        old_active_users = current_month_orders[current_month_orders['手机号'].isin(past_users)]['手机号'].unique()
+
+        # 新用户：本月两单以上且间隔1天
+        new_users_set = member_df[member_df['创建时间'] >= month_start]['手机号'].unique()
+        new_orders = current_month_orders[current_month_orders['手机号'].isin(new_users_set)]
+        new_repurchase_users = new_orders.groupby('手机号').filter(
+            lambda x: len(x) > 1 and (x['创建时间'].max() - x['创建时间'].min()).days >= 1
+        )['手机号'].unique()
+
+        # 回购用户总数
+        repurchase_users = len(set(old_active_users) | set(new_repurchase_users))
         
         monthly_metrics.append({
             'booking_month': str(period_month),
