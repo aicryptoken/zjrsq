@@ -32,32 +32,41 @@ def load_and_prepare_data(catering_file, space_file, member_file, product_file, 
         "入账门店", "ERP流水号", "第三方外卖平台单号", "配送平台", 
         "配送平台订单编号", "包装费", "配送费", "积分", "收银备注"
     ], inplace=True)
+    space_df.rename(columns={'支付金额1': '吧台场景收入','支付金额2':'大众点评场景收入'}, inplace=True)
     space_df.drop(columns=["用户昵称"], inplace=True)
     member_df.drop(columns=["UnionID", "OpenID", "昵称", "标签", "首次消费门店", "最后消费门店"], inplace=True)
 
-    product_df.columns = ['商品名', '数量统计', '基础产品', '营销系列', '口味', '套餐']
+    
     product_df['商品名'] = product_df['商品名'].str.strip()
-    product_df['基础产品'] = product_df['基础产品'].str.strip()
-    product_df['数量统计'] = pd.to_numeric(product_df['数量统计'], errors='coerce')
-    product_df[['营销系列', '口味', '套餐']] = product_df[['营销系列', '口味', '套餐']].fillna('')
-
+    product_df['产品类型'] = product_df['产品类型'].str.strip()
+    product_df[['场景','食品','饮品','甜品','卡券','营销系列', '口味', '价格','备注']] = product_df[['场景','食品','饮品','甜品','卡券','营销系列', '口味', '价格','备注']].fillna('')
+    
     
     # 格式化日期列
     catering_df = preprocess_datetime(catering_df)
     space_df = preprocess_datetime(space_df)
     member_df = preprocess_datetime(member_df)
+    # 取消备注中的换行符
     space_df["订单备注"] = space_df["订单备注"].str.replace("\n", ",", regex=False)
-
+    space_df["预定备注"] = space_df["预定备注"].str.replace("\n", ",", regex=False)
+    catering_df["备注"] = catering_df["备注"].str.replace("\n", ",", regex=False)
     # 类型转换
     catering_df["会员号"] = catering_df["会员号"].astype(str)
     space_df["手机号"] = space_df["手机号"].astype(str)
     member_df["会员号"] = member_df["会员号"].astype(str)
-
     if "手机号" in member_df.columns:
         member_df["手机号"] = member_df["手机号"].astype(str)
 
     if "实际结束时间" in space_df.columns:
         space_df['实际结束时间'] = space_df['实际结束时间'].fillna('NA')
+
+    # 内容处理
+    space_df['订单商品名'] = space_df['订单商品名'].fillna('').str.strip().str.replace('上海洛克外滩店-', '').str.replace('ideaPod 二楼专注-', '').str.replace(' the Box', '')
+        # 名字修改对应关系需要确认
+    space_df['订单商品名'] = space_df['订单商品名'].replace({'丛林心流舱·日':'心流舱·巴赫','丛林心流舱·月':'心流舱·荣格','丛林心流舱·星':'心流舱·雨果','丛林心流舱·辰':'心流舱·牛顿','一层半帘区1':'蘑菇半帘区'})
+    space_df['订单商品名'] = space_df['订单商品名'].apply(
+        lambda x: '图书馆专注区' if x == '图书馆专注' else x
+    )
         
     # 设置主键
     catering_df.set_index("会员号", inplace=True)

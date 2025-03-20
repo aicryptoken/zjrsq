@@ -134,7 +134,7 @@ def order_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
 
 def product_analysis(catering_df: pd.DataFrame, conn) -> dict:
     """
-    商品分析：产品周度销售分析，筛选前20个基础产品，按周输出销售数量
+    商品分析：产品周度销售分析，筛选前20个产品类型，按周输出销售数量
     """
     product_df = pd.read_sql_query("SELECT * FROM Product", conn)
 
@@ -153,22 +153,35 @@ def product_analysis(catering_df: pd.DataFrame, conn) -> dict:
             print(f"解析商品字符串时出错: {e}")
             return pd.DataFrame()
 
-    # 解析商品并合并基础产品信息
+    # 解析商品并合并产品类型信息
     
     product_analysis = catering_df[['商品', '下单时间']].apply(lambda x: parse_products(x['商品'], x['下单时间']), axis=1)
     product_sales = pd.concat(product_analysis.tolist(), ignore_index=True)
-    product_sales = pd.merge(product_sales, product_df[['商品名', '基础产品']], 
+    product_sales = pd.merge(product_sales, product_df[['商品名', '产品类型']], 
                             left_on='product', right_on='商品名', how='left')
     
-    # 计算总销售量并筛选前20个基础产品
-    top_products = product_sales.groupby('基础产品')['quantity'].sum().nlargest(20).index
-    product_sales = product_sales[product_sales['基础产品'].isin(top_products)]
+    # 检查是否有未匹配的商品名
+    unmatched_products = product_sales[product_sales['商品名'].isna()]['product'].unique()
+    if len(unmatched_products) > 0:
+        # 将新的商品名保存到文件
+        new_products_df = pd.DataFrame({'product': unmatched_products})
+        new_products_df.to_csv('db/ideapod_product_new.csv', index=False, encoding='utf-8-sig')
+        print(f"发现 {len(unmatched_products)} 个新商品名，已保存到 db/ideapod_product_new.csv")
+        print("程序已暂停执行，请处理新商品后重新运行")
+        # 使用 sys.exit() 暂停程序执行，如果不想完全退出也可以用其他方式
+        import sys
+        sys.exit(1)
+
+
+    # 计算总销售量并筛选前20个产品类型
+    top_products = product_sales.groupby('产品类型')['quantity'].sum().nlargest(20).index
+    product_sales = product_sales[product_sales['产品类型'].isin(top_products)]
     
     # 添加周标识
     product_sales['订单周'] = product_sales['订单日期'].dt.to_period('W-MON').apply(lambda x: x.start_time.date())
     
-    # 按周和基础产品统计销售数量
-    weekly_product_sales = product_sales.groupby(['订单周', '基础产品']).agg(
+    # 按周和产品类型统计销售数量
+    weekly_product_sales = product_sales.groupby(['订单周', '产品类型']).agg(
         周销售数量=('quantity', 'sum')
     ).unstack(fill_value=0)
     weekly_product_sales.columns = [col[1] for col in weekly_product_sales.columns]

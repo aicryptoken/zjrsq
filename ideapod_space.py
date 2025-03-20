@@ -29,14 +29,14 @@ def preprocess_datetime(df: pd.DataFrame) -> pd.DataFrame:
 
 def calculate_user_intervals(orders_df: pd.DataFrame) -> pd.DataFrame:
     """计算用户订单间隔"""
-    orders_df['上次下单日期'] = orders_df.groupby('手机号')['创建时间'].shift(1)
-    orders_df['order_interval'] = (orders_df['创建时间'] - orders_df['上次下单日期']).dt.days
+    orders_df['上次下单日期'] = orders_df.groupby('手机号')['预定开始时间'].shift(1)
+    orders_df['order_interval'] = (orders_df['预定开始时间'] - orders_df['上次下单日期']).dt.days
     return orders_df
 
 def analyze_order(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     """合并的订单优化和升舱分析"""
     # 确保时间列是datetime格式并提取月份
-    space_df['月份'] = space_df['创建时间'].dt.strftime('%Y-%m')
+    space_df['月份'] = space_df['预定开始时间'].dt.strftime('%Y-%m')
     space_df['升舱标记'] = (space_df['升舱'] == '是').astype(int)
     
     # 1. 升舱分析 - 按月和订单商品名统计
@@ -137,8 +137,8 @@ def analyze_member(member_df: pd.DataFrame, db_path: str) -> Dict[str, pd.DataFr
     """合并后的会员分析函数"""
     member_df = calculate_user_intervals(member_df)
     unique_months = sorted(member_df['booking_month'].unique())
-    last_order_dates = member_df.groupby('手机号')['创建时间'].max().reset_index()
-    first_order_dates = member_df.groupby('手机号')['创建时间'].min().reset_index()
+    last_order_dates = member_df.groupby('手机号')['预定开始时间'].max().reset_index()
+    first_order_dates = member_df.groupby('手机号')['预定开始时间'].min().reset_index()
     
     # 初始化结果列表
     monthly_metrics = []
@@ -148,36 +148,36 @@ def analyze_member(member_df: pd.DataFrame, db_path: str) -> Dict[str, pd.DataFr
         month_end = period_month.to_timestamp('M')
         
         # 当前月数据
-        current_month_orders = member_df[(member_df['创建时间'] >= month_start) & 
-                                       (member_df['创建时间'] <= month_end)]
+        current_month_orders = member_df[(member_df['预定开始时间'] >= month_start) & 
+                                       (member_df['预定开始时间'] <= month_end)]
         active_users = current_month_orders['手机号'].nunique()
         
         # 新增用户
-        new_users = len(first_order_dates[(first_order_dates['创建时间'] >= month_start) &
-                                        (first_order_dates['创建时间'] <= month_end)]['手机号'].unique())
+        new_users = len(first_order_dates[(first_order_dates['预定开始时间'] >= month_start) &
+                                        (first_order_dates['预定开始时间'] <= month_end)]['手机号'].unique())
         
         # 流失相关
-        churn_30_60 = len(last_order_dates[(last_order_dates['创建时间'] < month_end - timedelta(days=30)) &
-                                         (last_order_dates['创建时间'] >= month_end - timedelta(days=60))]['手机号'].unique())
-        churn_60_90 = len(last_order_dates[(last_order_dates['创建时间'] < month_end - timedelta(days=60)) &
-                                         (last_order_dates['创建时间'] >= month_end - timedelta(days=90))]['手机号'].unique())
-        churn_long = len(last_order_dates[last_order_dates['创建时间'] < month_end - timedelta(days=120)]['手机号'].unique())
+        churn_30_60 = len(last_order_dates[(last_order_dates['预定开始时间'] < month_end - timedelta(days=30)) &
+                                         (last_order_dates['预定开始时间'] >= month_end - timedelta(days=60))]['手机号'].unique())
+        churn_60_90 = len(last_order_dates[(last_order_dates['预定开始时间'] < month_end - timedelta(days=60)) &
+                                         (last_order_dates['预定开始时间'] >= month_end - timedelta(days=90))]['手机号'].unique())
+        churn_long = len(last_order_dates[last_order_dates['预定开始时间'] < month_end - timedelta(days=120)]['手机号'].unique())
         
         # 重新激活用户
-        prev_users = member_df[(member_df['创建时间'] < month_start - timedelta(days=90)) &
-                             (member_df['创建时间'] >= month_start - timedelta(days=180))]['手机号'].unique()
+        prev_users = member_df[(member_df['预定开始时间'] < month_start - timedelta(days=90)) &
+                             (member_df['预定开始时间'] >= month_start - timedelta(days=180))]['手机号'].unique()
         reactivated = len(current_month_orders[current_month_orders['手机号'].isin(prev_users)]['手机号'].unique())
         
         # 计算回购用户
         # 老用户：本月前有消费记录且本月有消费
-        past_users = member_df[member_df['创建时间'] < month_start]['手机号'].unique()
+        past_users = member_df[member_df['预定开始时间'] < month_start]['手机号'].unique()
         old_active_users = current_month_orders[current_month_orders['手机号'].isin(past_users)]['手机号'].unique()
 
         # 新用户：本月两单以上且间隔1天
-        new_users_set = member_df[member_df['创建时间'] >= month_start]['手机号'].unique()
+        new_users_set = member_df[member_df['预定开始时间'] >= month_start]['手机号'].unique()
         new_orders = current_month_orders[current_month_orders['手机号'].isin(new_users_set)]
         new_repurchase_users = new_orders.groupby('手机号').filter(
-            lambda x: len(x) > 1 and (x['创建时间'].max() - x['创建时间'].min()).days >= 1
+            lambda x: len(x) > 1 and (x['预定开始时间'].max() - x['预定开始时间'].min()).days >= 1
         )['手机号'].unique()
 
         # 回购用户总数
@@ -221,8 +221,8 @@ def analyze_member(member_df: pd.DataFrame, db_path: str) -> Dict[str, pd.DataFr
         prev_month = unique_months[i-1]
         prev_new_users = member_df[(member_df['booking_month'] == prev_month) & 
                                  (member_df['手机号'].isin(first_order_dates[
-                                     (first_order_dates['创建时间'] >= prev_month.to_timestamp()) &
-                                     (first_order_dates['创建时间'] <= prev_month.to_timestamp('M'))
+                                     (first_order_dates['预定开始时间'] >= prev_month.to_timestamp()) &
+                                     (first_order_dates['预定开始时间'] <= prev_month.to_timestamp('M'))
                                  ]['手机号']))]['手机号'].unique()
         current_active = member_df[(member_df['booking_month'] == month) & 
                                  (member_df['手机号'].isin(prev_new_users))]['手机号'].nunique()
@@ -244,14 +244,14 @@ def analyze_member(member_df: pd.DataFrame, db_path: str) -> Dict[str, pd.DataFr
 
 def analyze_users(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     # 设置时间范围
-    today = space_df['创建时间'].max()
+    today = space_df['预定开始时间'].max()
     begin_day = today - timedelta(days=180)  # 统计关注6个月的用户
     # 过滤过去6个月的数据
-    df_filtered = space_df[space_df['创建时间'] >= begin_day].copy()
+    df_filtered = space_df[space_df['预定开始时间'] >= begin_day].copy()
     
     # 按手机号聚合计算所需指标
     rfm_analysis = df_filtered.groupby('手机号').agg({
-        '创建时间': 'max',  # 最近一次消费时间
+        '预定开始时间': 'max',  # 最近一次消费时间
         '实付金额': 'sum',  # 总消费金额
         '订单编号': 'count'  # 消费次数
     }).reset_index()
@@ -309,7 +309,7 @@ def analyze_users(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
         '用户价值分布（RFM模型）_bar': distribution_result
     }
 
-def analyze_weekly_finance(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
+def analyze_finance(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     """周度财务分析"""
     
     weekly_analysis = space_df.groupby('booking_week').agg({
@@ -331,7 +331,7 @@ def analyze_space(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
 
     # 过滤时间和商品名
     filtered_space_df = space_df[
-        (space_df['创建时间'] >= '2023-09-19') & 
+        (space_df['预定开始时间'] >= '2023-09-19') & 
         (~space_df['订单商品名'].isin(['丛林小剧院', '丛林心流舱']))
     ]
     # 定义有效时间段和每日可用时长
@@ -599,20 +599,14 @@ def analyze(conn):
         space_df = space_df.merge(member_df, left_index=True, right_on='手机号', how='left')
         space_df['等级'] = space_df['等级'].fillna("未注册用户")    
         space_df = space_df[space_df['等级'] != 'ideapod']
-
-        space_df['订单商品名'] = space_df['订单商品名'].fillna('').str.strip().str.replace('上海洛克外滩店-', '').str.replace('ideaPod 二楼专注-', '').str.replace(' the Box', '')
-        # 名字修改对应关系需要确认
-        space_df['订单商品名'] = space_df['订单商品名'].replace({'丛林心流舱·日':'心流舱·巴赫','丛林心流舱·月':'心流舱·荣格','丛林心流舱·星':'心流舱·雨果','丛林心流舱·辰':'心流舱·牛顿','一层半帘区1':'蘑菇半帘区'})
-        space_df['订单商品名'] = space_df['订单商品名'].apply(
-            lambda x: '图书馆专注区' if x == '图书馆专注' else x
-        )
+        
         # 预处理数据，不填充数值列的 NaN，保留为 None
         space_df = preprocess_datetime(space_df)
 
-        space_df['booking_month'] = space_df['创建时间'].dt.to_period('M')
-        space_df['booking_week'] = space_df['创建时间'].dt.to_period('W-MON').apply(lambda x: x.start_time.date())
+        space_df['booking_month'] = space_df['预定开始时间'].dt.to_period('M')
+        space_df['booking_week'] = space_df['预定开始时间'].dt.to_period('W-MON').apply(lambda x: x.start_time.date())
         space_df['开始使用时刻'] = pd.to_datetime(space_df['预定开始时间'], errors='coerce').dt.hour
-        space_df['weekday'] = space_df['创建时间'].dt.day_name()
+        space_df['weekday'] = space_df['预定开始时间'].dt.day_name()
         weekday_map = {
             'Monday': '周一', 'Tuesday': '周二', 'Wednesday': '周三', 
             'Thursday': '周四', 'Friday': '周五', 'Saturday': '周六', 'Sunday': '周日'
@@ -622,7 +616,7 @@ def analyze(conn):
         order_results = analyze_order(space_df)
         member_results = analyze_member(space_df, conn)
         user_results = analyze_users(space_df)
-        financial_results = analyze_weekly_finance(space_df)
+        financial_results = analyze_finance(space_df)
         space_results = analyze_space(space_df)
 
         all_results = {
