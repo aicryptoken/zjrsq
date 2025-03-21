@@ -113,7 +113,7 @@ def get_table_metadata(cursor, table_name):
 
     return metadata
 
-def generate_metadata_report(db_file, output_json="metadata_report.json"):
+def generate_metadata_report(db_file, output_json="../db/metadata_report.json"):
     """
     连接到数据库，遍历所有表，生成详细的元数据报告，并将结果保存为 JSON 文件
     """

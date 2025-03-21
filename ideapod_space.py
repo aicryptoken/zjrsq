@@ -136,7 +136,7 @@ def analyze_order(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
 def analyze_member(member_df: pd.DataFrame, db_path: str) -> Dict[str, pd.DataFrame]:
     """合并后的会员分析函数"""
     member_df = calculate_user_intervals(member_df)
-    unique_months = sorted(member_df['booking_month'].unique())
+    unique_months = sorted(member_df['订单月'].unique())
     last_order_dates = member_df.groupby('手机号')['预定开始时间'].max().reset_index()
     first_order_dates = member_df.groupby('手机号')['预定开始时间'].min().reset_index()
     
@@ -184,7 +184,7 @@ def analyze_member(member_df: pd.DataFrame, db_path: str) -> Dict[str, pd.DataFr
         repurchase_users = len(set(old_active_users) | set(new_repurchase_users))
         
         monthly_metrics.append({
-            'booking_month': str(period_month),
+            '订单月': str(period_month),
             '活跃用户': active_users,
             '新增用户': new_users,
             '流失预警_30_60天': churn_30_60,
@@ -197,7 +197,7 @@ def analyze_member(member_df: pd.DataFrame, db_path: str) -> Dict[str, pd.DataFr
     counts_df = pd.DataFrame(monthly_metrics)
     
     # 计算按月和会员等级的统计
-    monthly_level_stats = member_df.groupby(['booking_month', '等级']).agg({
+    monthly_level_stats = member_df.groupby(['订单月', '等级']).agg({
         '实付金额': ['mean', 'sum'],
         '订单编号': 'count',
         '手机号': 'nunique'
@@ -211,7 +211,7 @@ def analyze_member(member_df: pd.DataFrame, db_path: str) -> Dict[str, pd.DataFr
     
     
     # 计算一个月留存率、回购率及流失率
-    rates_df = pd.DataFrame({'booking_month': counts_df['booking_month']})
+    rates_df = pd.DataFrame({'订单月': counts_df['订单月']})
     rates_df['一个月留存率'] = 0.0
     rates_df['回购率'] = counts_df['回购用户'] / counts_df['活跃用户'] * 100
     rates_df['30天流失率'] = counts_df['流失预警_30_60天'] / counts_df['活跃用户'].shift(1) * 100
@@ -219,12 +219,12 @@ def analyze_member(member_df: pd.DataFrame, db_path: str) -> Dict[str, pd.DataFr
     
     for i, month in enumerate(unique_months[1:], 1):
         prev_month = unique_months[i-1]
-        prev_new_users = member_df[(member_df['booking_month'] == prev_month) & 
+        prev_new_users = member_df[(member_df['订单月'] == prev_month) & 
                                  (member_df['手机号'].isin(first_order_dates[
                                      (first_order_dates['预定开始时间'] >= prev_month.to_timestamp()) &
                                      (first_order_dates['预定开始时间'] <= prev_month.to_timestamp('M'))
                                  ]['手机号']))]['手机号'].unique()
-        current_active = member_df[(member_df['booking_month'] == month) & 
+        current_active = member_df[(member_df['订单月'] == month) & 
                                  (member_df['手机号'].isin(prev_new_users))]['手机号'].nunique()
         rates_df.loc[i, '一个月留存率'] = current_active / len(prev_new_users) * 100 if len(prev_new_users) > 0 else 0
     
@@ -312,7 +312,7 @@ def analyze_users(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
 def analyze_finance(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     """周度财务分析"""
     
-    weekly_analysis = space_df.groupby('booking_week').agg({
+    weekly_analysis = space_df.groupby('订单周').agg({
         '订单编号': 'count',  
         '实付金额': ['sum', 'mean'],
         '手机号': 'nunique',
@@ -321,9 +321,8 @@ def analyze_finance(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     
     weekly_analysis.columns = ['订单量', '销售收入', '平均订单金额', '活跃会员数', '总使用时长', '平均使用时长']
     weekly_analysis = weekly_analysis.reset_index()
-    weekly_analysis['周'] = weekly_analysis['booking_week'].astype(str)
-    weekly_analysis = weekly_analysis.drop(columns=['booking_week'])
-    weekly_analysis = weekly_analysis[['周', '销售收入', '订单量', '平均订单金额', '活跃会员数', '总使用时长', '平均使用时长']]
+    weekly_analysis['订单周'] = weekly_analysis['订单周'].astype(str)
+    weekly_analysis = weekly_analysis[['订单周', '销售收入', '订单量', '平均订单金额', '活跃会员数', '总使用时长', '平均使用时长']]
     return {'财务分析_bar': weekly_analysis}
 
 def analyze_space(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
@@ -362,22 +361,22 @@ def analyze_space(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     for metric in ['收入', '订单量','总时长', '单均时长', '利用率']:
         try:
             if metric == '订单量':
-                df = filtered_space_df.groupby(['booking_week', '订单商品名'])['订单编号'].count().reset_index()
-                df.columns = ['周', '空间类型', '订单量']
+                df = filtered_space_df.groupby(['订单周', '订单商品名'])['订单编号'].count().reset_index()
+                df.columns = ['订单周', '空间类型', '订单量']
             elif metric == '收入':
-                df = filtered_space_df.groupby(['booking_week', '订单商品名'])['实付金额'].sum().reset_index()
-                df.columns = ['周', '空间类型', '收入']
+                df = filtered_space_df.groupby(['订单周', '订单商品名'])['实付金额'].sum().reset_index()
+                df.columns = ['订单周', '空间类型', '收入']
             elif metric == '总时长':
-                df = filtered_space_df.groupby(['booking_week', '订单商品名'])['实际时长'].sum().reset_index()
-                df.columns = ['周', '空间类型', '总时长']
+                df = filtered_space_df.groupby(['订单周', '订单商品名'])['实际时长'].sum().reset_index()
+                df.columns = ['订单周', '空间类型', '总时长']
             elif metric == '单均时长':
-                df = filtered_space_df.groupby(['booking_week', '订单商品名'])['实际时长'].mean().reset_index()
-                df.columns = ['周', '空间类型', '单均时长']
+                df = filtered_space_df.groupby(['订单周', '订单商品名'])['实际时长'].mean().reset_index()
+                df.columns = ['订单周', '空间类型', '单均时长']
             elif metric == '利用率':
                 # 利用率计算 - 每周每个空间类型的利用率
                 weekly_products = []
                 
-                for (week, product_name), group in filtered_space_df.groupby(['booking_week', '订单商品名']):
+                for (week, product_name), group in filtered_space_df.groupby(['订单周', '订单商品名']):
                     daily_hours = get_daily_hours(product_name)
                     max_weekly_hours = daily_hours * 7
                     actual_hours = group['实际时长'].sum()
@@ -386,7 +385,7 @@ def analyze_space(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
                     utilization = min(100, (actual_hours / max_weekly_hours) * 100) if max_weekly_hours > 0 else 0
 
                     weekly_products.append({
-                        '周': week,
+                        '订单周': week,
                         '空间类型': product_name,
                         '利用率': utilization
                     })
@@ -394,23 +393,23 @@ def analyze_space(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
                 df = pd.DataFrame(weekly_products)
             
             # 转换周为字符串格式
-            df['周'] = df['周'].astype(str)
+            df['订单周'] = df['订单周'].astype(str)
             
             # 透视表转换结果
-            pivot_df = df.pivot(index='周', columns='空间类型', values=df.columns[-1])
+            pivot_df = df.pivot(index='订单周', columns='空间类型', values=df.columns[-1])
             results[f'各区{metric}_bar'] = pivot_df.reset_index().rename_axis(None, axis=1)
         
         except Exception as e:
             logging.error(f"Error in '{metric}' calculation: {str(e)}")
             # 如果出错，创建一个空的DataFrame作为结果
-            results[f'各区{metric}_bar'] = pd.DataFrame(columns=['周'])
+            results[f'各区{metric}_bar'] = pd.DataFrame(columns=['订单周'])
 
     # 周度日内使用率_bar (按分钟计算使用率)
     try:
         # 按周整理数据并计算
         hourly_usage_data = []
         
-        for week, week_df in filtered_space_df.groupby('booking_week'):
+        for week, week_df in filtered_space_df.groupby('订单周'):
             # 获取该周的所有日期
             week_start = pd.Timestamp(week)
             week_dates = [week_start + timedelta(days=i) for i in range(7)]
@@ -466,7 +465,7 @@ def analyze_space(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
                 avg_usage = sum(product_usage.values()) / valid_products if valid_products > 0 else 0
                 
                 hourly_usage_data.append({
-                    '周': str(week),
+                    '订单周': str(week),
                     '小时': f"{hour}点",
                     '使用率': avg_usage
                 })
@@ -474,15 +473,15 @@ def analyze_space(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
         # 创建DataFrame并透视
         hourly_df = pd.DataFrame(hourly_usage_data)
         if not hourly_df.empty:
-            hourly_pivot = hourly_df.pivot(index='周', columns='小时', values='使用率').fillna(0)
+            hourly_pivot = hourly_df.pivot(index='订单周', columns='小时', values='使用率').fillna(0)
             results['周度日内使用率_bar'] = hourly_pivot.reset_index()
         else:
             # 空结果
-            results['周度日内使用率_bar'] = pd.DataFrame(columns=['周'])
+            results['周度日内使用率_bar'] = pd.DataFrame(columns=['订单周'])
     
     except Exception as e:
         logging.error(f"Error in hourly utilization calculation: {str(e)}")
-        results['周度日内使用率_bar'] = pd.DataFrame(columns=['周'])
+        results['周度日内使用率_bar'] = pd.DataFrame(columns=['订单周'])
 
     # 周内使用率_bar (按星期几分析)
     try:
@@ -496,7 +495,7 @@ def analyze_space(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
         # 周内使用率数据
         weekday_usage_data = []
         
-        for month, month_df in filtered_space_df.groupby('booking_month'):
+        for month, month_df in filtered_space_df.groupby('订单月'):
             month_str = str(month)
             month_data = {'月份': month_str}
             
@@ -591,20 +590,15 @@ def convert_df_to_dict(data):
 def analyze(conn):
     try:
         space_df = pd.read_sql_query("SELECT * FROM Space", conn)
-        member_df = pd.read_sql_query("SELECT 手机号, 等级 FROM Member", conn)
 
-        space_df.set_index("手机号", inplace=True)
-        space_df.index = space_df.index.astype(str)
-    
-        space_df = space_df.merge(member_df, left_index=True, right_on='手机号', how='left')
-        space_df['等级'] = space_df['等级'].fillna("未注册用户")    
-        space_df = space_df[space_df['等级'] != 'ideapod']
+        # 内部用户付费的也算外部消费
+        # space_df = space_df[space_df['等级'] != 'ideapod']
         
         # 预处理数据，不填充数值列的 NaN，保留为 None
         space_df = preprocess_datetime(space_df)
 
-        space_df['booking_month'] = space_df['预定开始时间'].dt.to_period('M')
-        space_df['booking_week'] = space_df['预定开始时间'].dt.to_period('W-MON').apply(lambda x: x.start_time.date())
+        space_df['订单月'] = space_df['预定开始时间'].dt.to_period('M')
+        space_df['订单周'] = space_df['预定开始时间'].dt.to_period('W-MON').apply(lambda x: x.start_time.date())
         space_df['开始使用时刻'] = pd.to_datetime(space_df['预定开始时间'], errors='coerce').dt.hour
         space_df['weekday'] = space_df['预定开始时间'].dt.day_name()
         weekday_map = {

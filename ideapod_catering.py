@@ -29,7 +29,7 @@ def preprocess_datetime(df: pd.DataFrame) -> pd.DataFrame:
                     logging.error(f"转换 {col} 列时出错：{e}")
     return df
 
-def financial_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
+def analyze_finance(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     """
     财务分析：包括周度实收金额、周内销售金额/订单、时间段销售金额/订单
     """
@@ -51,44 +51,44 @@ def financial_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     weekday_order_cn = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 
     # 周内收入分布
-    weekday_sales = catering_df.groupby(['订单月份', '星期', catering_df['下单时间'].dt.date]).agg(
+    weekday_sales = catering_df.groupby(['订单月', '星期', catering_df['下单时间'].dt.date]).agg(
         日销售金额=('实收', 'sum')  # 先按天汇总
-    ).reset_index().groupby(['订单月份', '星期']).agg(
+    ).reset_index().groupby(['订单月', '星期']).agg(
         日均销售金额=('日销售金额', 'mean')  # 再取日均值
     ).unstack(fill_value=0)
     weekday_sales.columns = [weekday_order_cn[weekday_order_en.index(col[1])] for col in weekday_sales.columns]  # 转换为中文
     weekday_sales = weekday_sales.reindex(columns=weekday_order_cn, fill_value=0).reset_index()
-    weekday_sales['订单月份'] = weekday_sales['订单月份'].astype(str)
+    weekday_sales['订单月'] = weekday_sales['订单月'].astype(str)
 
     # 周内单量分布
-    weekday_orders = catering_df.groupby(['订单月份', '星期', catering_df['下单时间'].dt.date]).agg(
+    weekday_orders = catering_df.groupby(['订单月', '星期', catering_df['下单时间'].dt.date]).agg(
         日订单数量=('订单号', 'count')  # 先按天计数
-    ).reset_index().groupby(['订单月份', '星期']).agg(
+    ).reset_index().groupby(['订单月', '星期']).agg(
         日均订单数量=('日订单数量', 'mean')  # 再取日均值
     ).unstack(fill_value=0)
     weekday_orders.columns = [weekday_order_cn[weekday_order_en.index(col[1])] for col in weekday_orders.columns]  # 转换为中文
     weekday_orders = weekday_orders.reindex(columns=weekday_order_cn, fill_value=0).reset_index()
-    weekday_orders['订单月份'] = weekday_orders['订单月份'].astype(str)
+    weekday_orders['订单月'] = weekday_orders['订单月'].astype(str)
 
     # 日内收入分布
-    hourly_sales = catering_df.groupby(['订单月份', '订单时刻', catering_df['下单时间'].dt.date]).agg(
+    hourly_sales = catering_df.groupby(['订单月', '订单时刻', catering_df['下单时间'].dt.date]).agg(
         日销售金额=('实收', 'sum')  # 先按天汇总
-    ).reset_index().groupby(['订单月份', '订单时刻']).agg(
+    ).reset_index().groupby(['订单月', '订单时刻']).agg(
         日均销售金额=('日销售金额', 'mean')  # 再取日均值
     ).unstack(fill_value=0)
     hourly_sales.columns = [f'{int(col[1])}时' for col in hourly_sales.columns]
     hourly_sales = hourly_sales.reset_index()
-    hourly_sales['订单月份'] = hourly_sales['订单月份'].astype(str)
+    hourly_sales['订单月'] = hourly_sales['订单月'].astype(str)
 
     # 日内单量分布
-    hourly_orders = catering_df.groupby(['订单月份', '订单时刻', catering_df['下单时间'].dt.date]).agg(
+    hourly_orders = catering_df.groupby(['订单月', '订单时刻', catering_df['下单时间'].dt.date]).agg(
         日订单数量=('订单号', 'count')  # 先按天计数
-    ).reset_index().groupby(['订单月份', '订单时刻']).agg(
+    ).reset_index().groupby(['订单月', '订单时刻']).agg(
         日均订单数量=('日订单数量', 'mean')  # 再取日均值
     ).unstack(fill_value=0)
     hourly_orders.columns = [f'{int(col[1])}时' for col in hourly_orders.columns]
     hourly_orders = hourly_orders.reset_index()
-    hourly_orders['订单月份'] = hourly_orders['订单月份'].astype(str)
+    hourly_orders['订单月'] = hourly_orders['订单月'].astype(str)
 
     return {
         '财务分析_bar': weekly_revenue_df,
@@ -98,7 +98,7 @@ def financial_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
         '日内单量分布_stacked': hourly_orders
     }
 
-def order_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
+def analyze_order(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     """
     订单分析：服务方式分析，按周拆分为销售金额、订单数量和订单单价
     """
@@ -132,7 +132,7 @@ def order_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
         '订单单价_服务方式_bar': source_price
     }
 
-def product_analysis(catering_df: pd.DataFrame, conn) -> dict:
+def analyze_product(catering_df: pd.DataFrame, conn) -> dict:
     """
     商品分析：产品周度销售分析，筛选前20个产品类型，按周输出销售数量
     """
@@ -192,7 +192,7 @@ def product_analysis(catering_df: pd.DataFrame, conn) -> dict:
         '产品销售量_bar': weekly_product_sales
     }
 
-def marketing_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
+def analyze_marketing(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     """营销分析，移除重复的促销类型"""
 
     # 处理促销类型，去除重复的优惠信息
@@ -208,19 +208,19 @@ def marketing_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     catering_df['促销类型'] = catering_df['使用优惠'].apply(deduplicate_promotions)
 
     # 分组统计
-    promotion_analysis = catering_df.groupby(['订单月份', '促销类型']).agg(
+    promotion_analysis = catering_df.groupby(['订单月', '促销类型']).agg(
         订单总数=('订单号', 'count'),
         销售收入=('实收', 'sum'),
         平均折扣=('打折', 'mean'),
         总折扣金额=('打折', 'sum')
     ).reset_index()
-    promotion_analysis['订单月份'] = promotion_analysis['订单月份'].astype(str)
+    promotion_analysis['订单月'] = promotion_analysis['订单月'].astype(str)
 
     return {
         '促销优惠分析_bar': promotion_analysis
     }
 
-def user_analysis(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
+def analyze_user(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     """
     用户分析：原来是以周度，将用户按订单次数分类，计算订单数量、总收入、平均订单价格
     现在修改为基于catering_df计算RFM用户价值
@@ -303,17 +303,17 @@ def analyze(conn):
         catering_df = pd.read_sql_query("SELECT * FROM Catering", conn)
         
         catering_df = preprocess_datetime(catering_df)
-        catering_df['订单月份'] = catering_df['下单时间'].dt.to_period('M')
+        catering_df['订单月'] = catering_df['下单时间'].dt.to_period('M')
         catering_df['订单周'] = catering_df['下单时间'].dt.to_period('W-MON').apply(lambda x: x.start_time.date())
         
         # 删除报损/领用的订单
         catering_df.drop(catering_df[catering_df['服务方式'] == '报损'].index, inplace=True)
 
-        financial_results = financial_analysis(catering_df)
-        order_results = order_analysis(catering_df)
-        product_results = product_analysis(catering_df, conn)
-        marketing_results = marketing_analysis(catering_df)
-        user_results = user_analysis(catering_df)
+        financial_results = analyze_finance(catering_df)
+        order_results = analyze_order(catering_df)
+        product_results = analyze_product(catering_df, conn)
+        marketing_results = analyze_marketing(catering_df)
+        user_results = analyze_user(catering_df)
 
         all_results = {
             '财务分析': financial_results,

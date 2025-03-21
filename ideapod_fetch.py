@@ -67,12 +67,17 @@ def load_and_prepare_data(catering_file, space_file, member_file, product_file, 
     space_df['订单商品名'] = space_df['订单商品名'].apply(
         lambda x: '图书馆专注区' if x == '图书馆专注' else x
     )
-        
+
     # 设置主键
     catering_df.set_index("会员号", inplace=True)
-    space_df.set_index("手机号", inplace=True)
     member_df.set_index("会员号", inplace=True)
     product_df.set_index("商品名", inplace=True)
+    space_df.set_index("手机号", inplace=True)
+
+    # 添加场景用户等级
+    space_df.index = space_df.index.astype(str)
+    space_df = space_df.merge(member_df, left_index=True, right_on='手机号', how='left')
+    space_df['等级'] = space_df['等级'].fillna("未注册用户")  
 
     # 保存到 SQLite 数据库并清理表
     conn = sqlite3.connect(database_path)
