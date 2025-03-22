@@ -4,6 +4,7 @@ from collections import defaultdict
 import datetime
 import pandas as pd
 import logging
+import numpy as np
 
 logging.basicConfig(
     level=logging.INFO,
@@ -29,6 +30,7 @@ def preprocess_datetime(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def convert_df_to_dict(data):
+    """Convert pandas DataFrame objects to dictionaries suitable for JSON serialization."""
     if isinstance(data, pd.DataFrame):
         df = data.copy()
         # 处理时间类型列
@@ -47,7 +49,6 @@ def convert_df_to_dict(data):
     elif isinstance(data, (pd.Timestamp, pd.Period, datetime.date)) or pd.isna(data):
         return str(data) if not pd.isna(data) else None
     return data
-
 
 def analyze_finance(space_df: pd.DataFrame, catering_df: pd.DataFrame) -> dict:
     """周度和日度财务分析"""
@@ -87,6 +88,30 @@ def analyze_finance(space_df: pd.DataFrame, catering_df: pd.DataFrame) -> dict:
     
     daily_data = daily_catering.merge(daily_categorized, on='订单日', how='outer').fillna(0)
     
+    # 读取书玉的数据并合并到 daily_data
+    try:
+        external_data = pd.read_csv('db/shuyu_data.csv')
+        # 确保日期格式一致
+        external_data['日期'] = pd.to_datetime(external_data['日期'], format='%m/%d/%y', errors='coerce')
+        daily_data['订单日'] = pd.to_datetime(daily_data['订单日'], errors='coerce')
+      
+        # 合并数据
+        daily_data = daily_data.merge(
+            external_data[['日期', '智能货柜收入', '最福利餐饮收入']],
+            left_on='订单日',
+            right_on='日期',
+            how='outer'
+        ).drop('日期', axis=1).fillna(0)
+        
+    except FileNotFoundError:
+        logging.warning("shuyu_data.csv not found. Proceeding without external data.")
+        daily_data['智能货柜收入'] = 0
+        daily_data['最福利餐饮收入'] = 0
+    except KeyError as e:
+        logging.error(f"Error: {e}. Check if '智能货柜收入' and '最福利餐饮收入' exist in shuyu_data.csv.")
+        daily_data['智能货柜收入'] = 0
+        daily_data['最福利餐饮收入'] = 0
+
     # Calculate adjusted incomes
     daily_data['吧台调整场景收入'] = (daily_data['吧台场景收入'] - 
                                      daily_data['月结收入'] - 
@@ -95,51 +120,40 @@ def analyze_finance(space_df: pd.DataFrame, catering_df: pd.DataFrame) -> dict:
                                    daily_data['吧台调整场景收入'] - 
                                    daily_data['拍摄收入'])
     daily_data['场景收入'] = daily_data['场景毛收入'] - daily_data['月结收入']
-    daily_data['餐饮收入'] = daily_data['吧台纯餐饮收入']
+    daily_data['餐饮收入'] = daily_data['吧台纯餐饮收入'] + daily_data['智能货柜收入'] + daily_data['最福利餐饮收入']
     
-    daily_result = daily_data[['订单日', '餐饮收入', '场景收入', '餐饮实收', '吧台场景收入', 
-                            '大众点评场景收入', '月结收入', '最福利场景收入', '拍摄收入',
-                            '吧台调整场景收入', '吧台纯餐饮收入']].to_dict(orient='records')
+    daily_result = daily_data[['订单日', '餐饮收入', '场景收入', '餐饮实收','吧台纯餐饮收入', '吧台场景收入', 
+                            '吧台调整场景收入','大众点评场景收入', '月结收入','智能货柜收入','最福利餐饮收入', '最福利场景收入', '拍摄收入'
+                            ]].to_dict(orient='records')
 
     # Weekly analysis
-    weekly_catering = catering_df.groupby('订单周').agg(
-        餐饮实收=('实收', 'sum')
-    ).reset_index()
+    # 从 daily_data 中提取需要加总的列，并按 '订单周' 分组
+    weekly_data = daily_data.copy()
+    weekly_data['订单周'] = pd.to_datetime(weekly_data['订单日'], errors='coerce').dt.to_period('W-MON').apply(lambda x: x.start_time.date())
     
-    weekly_space = space_df.copy()
-    # Apply categorization for all three conditions
-    weekly_space[['月结金额', '最福利金额', '拍摄金额']] = weekly_space.apply(
-        lambda row: pd.Series(categorize_incomes(row)), axis=1
-    )
-    
-    # Aggregate weekly data
-    weekly_categorized = weekly_space.groupby('订单周').agg({
-        '实付金额': 'sum',
+    weekly_data = weekly_data.groupby('订单周').agg({
+        '餐饮收入': 'sum',
+        '场景收入': 'sum',
+        '餐饮实收': 'sum',
         '吧台场景收入': 'sum',
         '大众点评场景收入': 'sum',
-        '月结金额': 'sum',
-        '最福利金额': 'sum',
-        '拍摄金额': 'sum'
+        '月结收入': 'sum',
+        '最福利场景收入': 'sum',
+        '拍摄收入': 'sum',
+        '吧台调整场景收入': 'sum',
+        '吧台纯餐饮收入': 'sum',
+        '智能货柜收入': 'sum',
+        '最福利餐饮收入': 'sum'
     }).reset_index()
     
-    weekly_categorized.columns = ['订单周', '场景毛收入', '吧台场景收入', '大众点评场景收入',
-                                '月结收入', '最福利场景收入', '拍摄收入']
+    weekly_result = weekly_data[['订单周', '餐饮收入', '场景收入', '餐饮实收','吧台纯餐饮收入', '吧台场景收入', 
+                            '吧台调整场景收入','大众点评场景收入', '月结收入','智能货柜收入','最福利餐饮收入', '最福利场景收入', '拍摄收入'
+                            ]].to_dict(orient='records')
     
-    weekly_data = weekly_catering.merge(weekly_categorized, on='订单周', how='outer').fillna(0)
+    # Fixed: Using datetime.datetime instead of just datetime
+    cutoff_date_space = datetime.datetime.strptime("2024-04-30", "%Y-%m-%d")
+    cutoff_date_catering = datetime.datetime.strptime("2023-11-06", "%Y-%m-%d")    
     
-    # Calculate adjusted incomes
-    weekly_data['吧台调整场景收入'] = (weekly_data['吧台场景收入'] - 
-                                     weekly_data['月结收入'] - 
-                                     weekly_data['最福利场景收入'])
-    weekly_data['吧台纯餐饮收入'] = (weekly_data['餐饮实收'] - 
-                                   weekly_data['吧台调整场景收入'] - 
-                                   weekly_data['拍摄收入'])
-    weekly_data['场景收入'] = weekly_data['场景毛收入'] - weekly_data['月结收入']
-    weekly_data['餐饮收入'] = weekly_data['吧台纯餐饮收入']
-    
-    weekly_result = weekly_data[['订单周', '餐饮收入', '场景收入', '餐饮实收', '吧台场景收入',
-                              '大众点评场景收入', '月结收入', '最福利场景收入', '拍摄收入',
-                              '吧台调整场景收入', '吧台纯餐饮收入']].to_dict(orient='records')
     # Trailing 4 weeks analysis
     trailing_data = []
     for i in range(len(weekly_result)):
@@ -151,13 +165,21 @@ def analyze_finance(space_df: pd.DataFrame, catering_df: pd.DataFrame) -> dict:
             "场景_trailing_4_week收入": space_trailing_4,
             "餐饮_trailing_4_week收入": catering_trailing_4
         }
+
+        # Fixed: Using datetime.datetime instead of just datetime
+        week_date = datetime.datetime.strptime(week_trailing["周"], "%Y-%m-%d")
         
         # WoW calculation
         if i > 0:
             prev_space = trailing_data[i-1]["场景_trailing_4_week收入"]
             prev_catering = trailing_data[i-1]["餐饮_trailing_4_week收入"]
-            week_trailing["场景_wow"] = (space_trailing_4 / prev_space - 1) * 100 if prev_space != 0 else 0
-            week_trailing["餐饮_wow"] = (catering_trailing_4 / prev_catering - 1) * 100 if prev_catering != 0 else 0
+            
+            # Avoid division by zero
+            space_wow = (space_trailing_4 / prev_space - 1) * 100 if prev_space != 0 else 0
+            week_trailing["场景_wow"] = 0 if week_date <= cutoff_date_space else space_wow
+            
+            catering_wow = (catering_trailing_4 / prev_catering - 1) * 100 if prev_catering != 0 else 0
+            week_trailing["餐饮_wow"] = 0 if week_date <= cutoff_date_catering else catering_wow
         else:
             week_trailing["场景_wow"] = 0
             week_trailing["餐饮_wow"] = 0
@@ -166,8 +188,13 @@ def analyze_finance(space_df: pd.DataFrame, catering_df: pd.DataFrame) -> dict:
         if i >= 4:
             prev_4_space = trailing_data[i-4]["场景_trailing_4_week收入"]
             prev_4_catering = trailing_data[i-4]["餐饮_trailing_4_week收入"]
-            week_trailing["场景_mom"] = (space_trailing_4 / prev_4_space - 1) * 100 if prev_4_space != 0 else 0
-            week_trailing["餐饮_mom"] = (catering_trailing_4 / prev_4_catering - 1) * 100 if prev_4_catering != 0 else 0
+            
+            # Avoid division by zero
+            space_mom = (space_trailing_4 / prev_4_space - 1) * 100 if prev_4_space != 0 else 0
+            week_trailing["场景_mom"] = 0 if week_date <= cutoff_date_space else space_mom
+            
+            catering_mom = (catering_trailing_4 / prev_4_catering - 1) * 100 if prev_4_catering != 0 else 0
+            week_trailing["餐饮_mom"] = 0 if week_date <= cutoff_date_catering else catering_mom
         else:
             week_trailing["场景_mom"] = 0
             week_trailing["餐饮_mom"] = 0
@@ -185,11 +212,6 @@ def analyze_finance(space_df: pd.DataFrame, catering_df: pd.DataFrame) -> dict:
         "日度销售收入_table": daily_result
     }
 
-    # Print results for reference
-    print("分析完成")
-    print("\n周度数据示例:", weekly_result[-1] if weekly_result else "无数据")
-    # print("日度数据示例:", daily_data.iloc[-1].to_dict() if not daily_data.empty else "无数据")
-    
     return {'集团财务': output_data}
 
 def analyze(conn):
@@ -199,10 +221,12 @@ def analyze(conn):
         space_df = pd.read_sql_query("SELECT * FROM Space", conn)
        
         # Filter data
-        catering_df = catering_df.drop(catering_df[catering_df['服务方式'] == '报损'].index, inplace=False)
+        catering_df = catering_df[catering_df['服务方式'] != '报损']
         
         # 内部用户付费的也算外部消费
         # space_df = space_df[space_df['等级'] != 'ideapod']
+
+        catering_df = catering_df[catering_df['赠送'] == 0]
         
         # Preprocess datetime
         catering_df = preprocess_datetime(catering_df)
@@ -218,6 +242,7 @@ def analyze(conn):
 
         financial_results = analyze_finance(space_df, catering_df)
 
+        # Process results for JSON serialization
         processed_results = {}
         for category, data in financial_results.items():
             processed_results[category] = {key: convert_df_to_dict(value) for key, value in data.items()}
@@ -225,6 +250,8 @@ def analyze(conn):
         return processed_results
 
     except sqlite3.Error as e:
+        logging.error(f"Database error: {e}")
         return {'error': f"Database error: {e}"}
     except Exception as e:
+        logging.error(f"An error occurred: {e}")
         return {'error': f"An error occurred: {e}"}
