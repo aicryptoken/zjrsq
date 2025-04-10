@@ -17,7 +17,7 @@ logging.basicConfig(
 def preprocess_datetime(df: pd.DataFrame) -> pd.DataFrame:
     """Central datetime preprocessing to reduce redundant operations"""
     datetime_columns = [
-        '创建时间', '预定开始时间', '预定结束时间',  # Space
+        '创建时间', '预定开始时间', '预定结束时间', '支付时间',  # Space
         '下单时间',  # Catering
     ]
     for col in datetime_columns:
@@ -129,7 +129,12 @@ def analyze_finance(space_df: pd.DataFrame, catering_df: pd.DataFrame) -> dict:
     # Weekly analysis
     # 从 daily_data 中提取需要加总的列，并按 '订单周' 分组
     weekly_data = daily_data.copy()
-    weekly_data['订单周'] = pd.to_datetime(weekly_data['订单日'], errors='coerce').dt.to_period('W-MON').apply(lambda x: x.start_time.date())
+    weekly_data['订单周'] = pd.to_datetime(weekly_data['订单日'], errors='coerce').dt.to_period('W-MON').apply(
+        lambda x: x.start_time.date() if pd.notna(x) else None
+    )
+    
+    # 移除包含 None 的行
+    weekly_data = weekly_data.dropna(subset=['订单周'])
     
     weekly_data = weekly_data.groupby('订单周').agg({
         '餐饮收入': 'sum',
@@ -220,25 +225,20 @@ def analyze(conn):
         catering_df = pd.read_sql_query("SELECT * FROM Catering", conn)
         space_df = pd.read_sql_query("SELECT * FROM Space", conn)
        
-        # Filter data
-        catering_df = catering_df[catering_df['服务方式'] != '报损']
-        
-        # 内部用户付费的也算外部消费
-        # space_df = space_df[space_df['等级'] != 'ideapod']
-
-        catering_df = catering_df[catering_df['赠送'] == 0]
-        
         # Preprocess datetime
         catering_df = preprocess_datetime(catering_df)
         space_df = preprocess_datetime(space_df)
         
+        # 剔除支付时间为 NA 的记录
+        space_df = space_df[~space_df['支付时间'].isna()]
+        
         # Add date columns
         catering_df['订单月'] = catering_df['下单时间'].dt.to_period('M')
         catering_df['订单周'] = catering_df['下单时间'].dt.to_period('W-MON').apply(lambda x: x.start_time.date())
-        catering_df['订单日'] = catering_df['下单时间'].dt.date
-        space_df['订单月'] = space_df['预定开始时间'].dt.to_period('M')
-        space_df['订单周'] = space_df['预定开始时间'].dt.to_period('W-MON').apply(lambda x: x.start_time.date())
-        space_df['订单日'] = space_df['预定开始时间'].dt.date
+        catering_df['订单日'] = catering_df['下单时间'].dt.strftime('%Y-%m-%d') 
+        space_df['订单月'] = space_df['支付时间'].dt.to_period('M')
+        space_df['订单周'] = space_df['支付时间'].dt.to_period('W-MON').apply(lambda x: x.start_time.date())
+        space_df['订单日'] = space_df['支付时间'].dt.strftime('%Y-%m-%d') 
 
         financial_results = analyze_finance(space_df, catering_df)
 
