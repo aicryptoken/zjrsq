@@ -32,14 +32,17 @@ def load_and_prepare_data(catering_file, space_file, member_file, product_file, 
         "入账门店", "ERP流水号", "第三方外卖平台单号", "配送平台", 
         "配送平台订单编号", "包装费", "配送费", "积分", "收银备注"
     ], inplace=True)
-    space_df.rename(columns={'支付金额1': '吧台场景收入','支付金额2':'大众点评场景收入'}, inplace=True)
+
+    space_df.rename(columns={'支付金额1': '场景实收_flipos','支付金额2':'场景实收_non_flipos'}, inplace=True)
     space_df.drop(columns=["用户昵称"], inplace=True)
     member_df.drop(columns=["UnionID", "OpenID", "昵称", "标签", "首次消费门店", "最后消费门店"], inplace=True)
 
     # 数据清洗
     # 1. 过滤 catering_df 中服务方式为"报损"和赠送为0的记录
     catering_df = catering_df[catering_df['服务方式'] != '报损']
-    catering_df = catering_df[catering_df['赠送'] == 0]
+    
+    # 赠送不影响实收
+    # catering_df = catering_df[catering_df['赠送'] == 0]
     
     # 2. 支付方式映射和调整
     mapping_dict = {
@@ -55,24 +58,24 @@ def load_and_prepare_data(catering_file, space_file, member_file, product_file, 
     space_df['支付方式1'] = space_df['支付方式1'].map(mapping_dict).astype('string')
     space_df['支付方式2'] = space_df['支付方式2'].map(mapping_dict).astype('string')
     
-    # 逻辑1.1：如果支付方式2是flipos，并且支付方式1是flipos，那么吧台场景收入 = 吧台场景收入+大众点评场景收入；并将支付方式2和大众点评场景收入改为NA
+    # 逻辑1.1：如果支付方式2是flipos，并且支付方式1是flipos，那么场景实收_flipos = 场景实收_flipos+场景实收_non_flipos；并将支付方式2和场景实收_non_flipos改为NA
     condition1 = (space_df['支付方式2'] == 'flipos') & (space_df['支付方式1'] == 'flipos')
-    space_df.loc[condition1, '吧台场景收入'] += space_df.loc[condition1, '大众点评场景收入']
-    space_df.loc[condition1, ['大众点评场景收入', '支付方式2']] = pd.NA
+    space_df.loc[condition1, '场景实收_flipos'] += space_df.loc[condition1, '场景实收_non_flipos']
+    space_df.loc[condition1, ['场景实收_non_flipos', '支付方式2']] = pd.NA
     
-    # 逻辑1.2：如果支付方式2是flipos，并且支付方式1是大众点评，那么交换支付方式1和吧台场景收入与支付方式2和大众点评场景收入的内容
+    # 逻辑1.2：如果支付方式2是flipos，并且支付方式1是大众点评，那么交换支付方式1和场景实收_flipos与支付方式2和场景实收_non_flipos的内容
     condition2 = (space_df['支付方式2'] == 'flipos') & (space_df['支付方式1'] == '大众点评')
-    space_df.loc[condition2, ['支付方式1', '吧台场景收入', '支付方式2', '大众点评场景收入']] = space_df.loc[condition2, ['支付方式2', '大众点评场景收入', '支付方式1', '吧台场景收入']].values
+    space_df.loc[condition2, ['支付方式1', '场景实收_flipos', '支付方式2', '场景实收_non_flipos']] = space_df.loc[condition2, ['支付方式2', '场景实收_non_flipos', '支付方式1', '场景实收_flipos']].values
 
-    # 逻辑2.1：如果支付方式1不是NaN，也不是flipos，并且支付方式2是NaN，那么将支付方式1，吧台场景收入与支付方式2，大众点评场景收入的内容对调
+    # 逻辑2.1：如果支付方式1不是NaN，也不是flipos，并且支付方式2是NaN，那么将支付方式1，场景实收_flipos与支付方式2，场景实收_non_flipos的内容对调
     condition4 = (~space_df['支付方式1'].isna()) & (space_df['支付方式1'] != 'flipos') & space_df['支付方式2'].isna()
-    space_df.loc[condition4, ['支付方式1', '吧台场景收入', '支付方式2', '大众点评场景收入']] = space_df.loc[condition4, ['支付方式2', '大众点评场景收入', '支付方式1', '吧台场景收入']].values
+    space_df.loc[condition4, ['支付方式1', '场景实收_flipos', '支付方式2', '场景实收_non_flipos']] = space_df.loc[condition4, ['支付方式2', '场景实收_non_flipos', '支付方式1', '场景实收_flipos']].values
 
-    # 逻辑2.2：如果支付方式1 == 支付方式2 或 (支付方式1不是NaN且不是flipos且支付方式2不是NaN)，那么大众点评场景收入=吧台场景收入+大众点评场景收入；并将支付方式1和吧台场景收入设为NaN
+    # 逻辑2.2：如果支付方式1 == 支付方式2 或 (支付方式1不是NaN且不是flipos且支付方式2不是NaN)，那么场景实收_non_flipos=场景实收_flipos+场景实收_non_flipos；并将支付方式1和场景实收_flipos设为NaN
     condition3 = ((space_df['支付方式1'] == space_df['支付方式2']) & (~space_df['支付方式1'].isna())) | ((~space_df['支付方式1'].isna()) & (space_df['支付方式1'] != 'flipos') & (~space_df['支付方式2'].isna()))
-    space_df.loc[condition3, '大众点评场景收入'] += space_df.loc[condition3, '吧台场景收入']
+    space_df.loc[condition3, '场景实收_non_flipos'] += space_df.loc[condition3, '场景实收_flipos']
     space_df.loc[condition3, '支付方式2'] = space_df.loc[condition3, '支付方式1']
-    space_df.loc[condition3, ['支付方式1', '吧台场景收入']] = pd.NA
+    space_df.loc[condition3, ['支付方式1', '场景实收_flipos']] = pd.NA
     
     product_df['商品名'] = product_df['商品名'].str.strip()
     product_df['产品类型'] = product_df['产品类型'].str.strip()
@@ -82,7 +85,7 @@ def load_and_prepare_data(catering_file, space_file, member_file, product_file, 
     catering_df = preprocess_datetime(catering_df)
     space_df = preprocess_datetime(space_df)
     member_df = preprocess_datetime(member_df)
-    
+
     # 取消备注中的换行符
     space_df["订单备注"] = space_df["订单备注"].str.replace("\n", ",", regex=False)
     space_df["预定备注"] = space_df["预定备注"].str.replace("\n", ",", regex=False)

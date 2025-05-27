@@ -53,38 +53,49 @@ def convert_df_to_dict(data):
 def analyze_finance(space_df: pd.DataFrame, catering_df: pd.DataFrame) -> dict:
     """周度和日度财务分析"""
     
-    # Helper function to categorize incomes based on remarks
+    # 过滤掉押金和尾款数据
+    original_len = len(catering_df)
+    catering_df = catering_df[~catering_df['商品'].str.contains('押金|尾款', na=False)]
+    filtered_count = original_len - len(catering_df)
+    logging.info(f"已过滤掉 {filtered_count} 条押金和尾款数据")
+    
     def categorize_incomes(row):
-        remark = str(row.get('订单备注', '')).lower()
-        amount = row['吧台场景收入']
-        monthly = amount if '月结' in remark else 0
-        welfare = amount if '最福利' in remark else 0
-        shooting = amount if '拍摄' in remark else 0
-        return monthly, welfare, shooting
+        payment_method = row['支付方式2']  # 已经是映射后的字符串
+        remark = str(row.get('订单备注', '')).lower()  # 拍摄仍需检查备注 
+        space_non_flipos_sales = row['场景实收_non_flipos']
+        space_flipos_sales = row['场景实收_flipos']
+        
+        space_monthly_settlement_revenue = space_non_flipos_sales if payment_method == '月结' else 0
+        space_welfare_revenue = space_non_flipos_sales if payment_method == '最福利积分' else 0
+        space_dianping_revenue = space_non_flipos_sales if payment_method == '大众点评' else 0
+        space_event_revenue = space_flipos_sales if '拍摄' in remark or '戴老师活动' in remark else 0 # 特殊处理戴老师活动订单
+        return space_monthly_settlement_revenue, space_welfare_revenue, space_dianping_revenue, space_event_revenue
 
     # Daily analysis
     daily_catering = catering_df.groupby('订单日').agg(
-        餐饮实收=('实收', 'sum')
+        吧台实收=('实收', 'sum'),
+        吧台活动收入=('实收', lambda x: x[catering_df.loc[x.index, '商品'].str.contains('拍摄|包场', na=False)].sum())
     ).reset_index()
     
     daily_space = space_df.copy()
-    # Apply categorization for all three conditions
-    daily_space[['月结金额', '最福利金额', '拍摄金额']] = daily_space.apply(
+    # Apply categorization for all conditions
+    daily_space[['月结收入', '最福利场景收入', '大众点评收入', '场景活动收入']] = daily_space.apply(
         lambda row: pd.Series(categorize_incomes(row)), axis=1
     )
     
     # Aggregate daily data
     daily_categorized = daily_space.groupby('订单日').agg({
         '实付金额': 'sum',
-        '吧台场景收入': 'sum',
-        '大众点评场景收入': 'sum',
-        '月结金额': 'sum',
-        '最福利金额': 'sum',
-        '拍摄金额': 'sum'
+        '场景实收_flipos': 'sum',
+        '场景实收_non_flipos': 'sum',
+        '月结收入': 'sum',
+        '最福利场景收入': 'sum',
+        '大众点评收入': 'sum',
+        '场景活动收入': 'sum'
     }).reset_index()
     
-    daily_categorized.columns = ['订单日', '场景毛收入', '吧台场景收入', '大众点评场景收入', 
-                                '月结收入', '最福利场景收入', '拍摄收入']
+    daily_categorized.columns = ['订单日', '场景毛收入', '场景收入_吧台', '场景实收_non_flipos',
+                                '场景收入_月结', '场景收入_最福利', '场景收入_大众点评', '场景收入_活动']
     
     daily_data = daily_catering.merge(daily_categorized, on='订单日', how='outer').fillna(0)
     
@@ -97,7 +108,7 @@ def analyze_finance(space_df: pd.DataFrame, catering_df: pd.DataFrame) -> dict:
       
         # 合并数据
         daily_data = daily_data.merge(
-            external_data[['日期', '智能货柜收入', '最福利餐饮收入']],
+            external_data[['日期', '餐饮收入_智能货柜', '餐饮收入_最福利']],
             left_on='订单日',
             right_on='日期',
             how='outer'
@@ -105,26 +116,28 @@ def analyze_finance(space_df: pd.DataFrame, catering_df: pd.DataFrame) -> dict:
         
     except FileNotFoundError:
         logging.warning("shuyu_data.csv not found. Proceeding without external data.")
-        daily_data['智能货柜收入'] = 0
-        daily_data['最福利餐饮收入'] = 0
+        daily_data['餐饮收入_智能货柜'] = 0
+        daily_data['餐饮收入_最福利'] = 0
     except KeyError as e:
-        logging.error(f"Error: {e}. Check if '智能货柜收入' and '最福利餐饮收入' exist in shuyu_data.csv.")
-        daily_data['智能货柜收入'] = 0
-        daily_data['最福利餐饮收入'] = 0
+        logging.error(f"Error: {e}. Check if '餐饮收入_智能货柜' and '餐饮收入_最福利' exist in shuyu_data.csv.")
+        daily_data['餐饮收入_智能货柜'] = 0
+        daily_data['餐饮收入_最福利'] = 0
 
     # Calculate adjusted incomes
-    daily_data['吧台调整场景收入'] = (daily_data['吧台场景收入'] - 
-                                     daily_data['月结收入'] - 
-                                     daily_data['最福利场景收入'])
-    daily_data['吧台纯餐饮收入'] = (daily_data['餐饮实收'] - 
-                                   daily_data['吧台调整场景收入'] - 
-                                   daily_data['拍摄收入'])
-    daily_data['场景收入'] = daily_data['场景毛收入'] - daily_data['月结收入']
-    daily_data['餐饮收入'] = daily_data['吧台纯餐饮收入'] + daily_data['智能货柜收入'] + daily_data['最福利餐饮收入']
+    daily_data['吧台非月结场景收入'] = (daily_data['场景收入_吧台'] - 
+                                     daily_data['场景收入_月结'] - 
+                                     daily_data['场景收入_最福利'])
+    daily_data['活动收入'] = (daily_data['场景收入_活动'] +  
+                                     daily_data['吧台活动收入'])   
+    daily_data['餐饮收入_吧台'] = (daily_data['吧台实收'] - 
+                                   daily_data['吧台非月结场景收入'] - 
+                                   daily_data['活动收入'])
+    daily_data['场景收入'] = daily_data['场景毛收入'] - daily_data['场景收入_月结']
+    daily_data['餐饮收入'] = daily_data['餐饮收入_吧台'] + daily_data['餐饮收入_智能货柜'] + daily_data['餐饮收入_最福利']
     
-    daily_result = daily_data[['订单日', '餐饮收入', '场景收入', '餐饮实收','吧台纯餐饮收入', '吧台场景收入', 
-                            '吧台调整场景收入','大众点评场景收入', '月结收入','智能货柜收入','最福利餐饮收入', '最福利场景收入', '拍摄收入'
-                            ]].to_dict(orient='records')
+    daily_result = daily_data[['订单日', '餐饮收入', '场景收入', '吧台实收', '餐饮收入_吧台', '场景收入_吧台',
+                            '场景实收_non_flipos', '场景收入_大众点评', '场景收入_月结', '餐饮收入_智能货柜', 
+                            '餐饮收入_最福利', '场景收入_最福利', '活动收入']].to_dict(orient='records')
 
     # Weekly analysis
     # 从 daily_data 中提取需要加总的列，并按 '订单周' 分组
@@ -133,27 +146,27 @@ def analyze_finance(space_df: pd.DataFrame, catering_df: pd.DataFrame) -> dict:
         lambda x: x.start_time.date() if pd.notna(x) else None
     )
     
-    # 移除包含 None 的行
     weekly_data = weekly_data.dropna(subset=['订单周'])
     
     weekly_data = weekly_data.groupby('订单周').agg({
         '餐饮收入': 'sum',
         '场景收入': 'sum',
-        '餐饮实收': 'sum',
-        '吧台场景收入': 'sum',
-        '大众点评场景收入': 'sum',
-        '月结收入': 'sum',
-        '最福利场景收入': 'sum',
-        '拍摄收入': 'sum',
-        '吧台调整场景收入': 'sum',
-        '吧台纯餐饮收入': 'sum',
-        '智能货柜收入': 'sum',
-        '最福利餐饮收入': 'sum'
+        '吧台实收': 'sum',
+        '场景收入_吧台': 'sum',
+        '场景实收_non_flipos': 'sum',
+        '场景收入_大众点评': 'sum',
+        '场景收入_月结': 'sum',
+        '场景收入_最福利': 'sum',
+        '活动收入': 'sum',
+        '吧台非月结场景收入': 'sum',
+        '餐饮收入_吧台': 'sum',
+        '餐饮收入_智能货柜': 'sum',
+        '餐饮收入_最福利': 'sum'
     }).reset_index()
     
-    weekly_result = weekly_data[['订单周', '餐饮收入', '场景收入', '餐饮实收','吧台纯餐饮收入', '吧台场景收入', 
-                            '吧台调整场景收入','大众点评场景收入', '月结收入','智能货柜收入','最福利餐饮收入', '最福利场景收入', '拍摄收入'
-                            ]].to_dict(orient='records')
+    weekly_result = weekly_data[['订单周', '餐饮收入', '场景收入', '吧台实收', '餐饮收入_吧台', '场景收入_吧台',
+                            '场景实收_non_flipos', '场景收入_大众点评', '场景收入_月结', '餐饮收入_智能货柜', 
+                            '餐饮收入_最福利', '场景收入_最福利', '活动收入']].to_dict(orient='records')
     
     # Fixed: Using datetime.datetime instead of just datetime
     cutoff_date_space = datetime.datetime.strptime("2024-04-30", "%Y-%m-%d")
