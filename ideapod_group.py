@@ -249,9 +249,9 @@ def analyze(conn):
         catering_df['订单月'] = catering_df['下单时间'].dt.to_period('M')
         catering_df['订单周'] = catering_df['下单时间'].dt.to_period('W-MON').apply(lambda x: x.start_time.date())
         catering_df['订单日'] = catering_df['下单时间'].dt.strftime('%Y-%m-%d') 
-        space_df['订单月'] = space_df['支付时间'].dt.to_period('M')
-        space_df['订单周'] = space_df['支付时间'].dt.to_period('W-MON').apply(lambda x: x.start_time.date())
-        space_df['订单日'] = space_df['支付时间'].dt.strftime('%Y-%m-%d') 
+        space_df['订单月'] = space_df['预定开始时间'].dt.to_period('M')
+        space_df['订单周'] = space_df['预定开始时间'].dt.to_period('W-MON').apply(lambda x: x.start_time.date())
+        space_df['订单日'] = space_df['预定开始时间'].dt.strftime('%Y-%m-%d') 
 
         financial_results = analyze_finance(space_df, catering_df)
 
