@@ -108,6 +108,9 @@ def load_and_prepare_data(catering_file, space_file, member_file, product_file, 
         lambda x: '图书馆专注区' if x == '图书馆专注' else x
     )
 
+    # 对于 member_df，如果手机号有重复，只保留"会员号"数值最大的那一条
+    member_df = member_df.sort_values("会员号", ascending=False).drop_duplicates(subset=["手机号"], keep="first")
+
     # 设置主键
     catering_df.set_index("会员号", inplace=True)
     member_df.set_index("会员号", inplace=True)
