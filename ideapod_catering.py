@@ -9,7 +9,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('db/ideapod_catering.log')
+        logging.FileHandler('db/ideapod.log')
     ]
 )
 
@@ -26,7 +26,7 @@ def preprocess_datetime(df: pd.DataFrame) -> pd.DataFrame:
                 try:
                     df[col] = pd.to_datetime(df[col], errors='coerce')
                 except Exception as e:
-                    logging.error(f"转换 {col} 列时出错：{e}")
+                    logging.error(f"[Catering] 转换 {col} 列时出错：{e}")
     return df
 
 def analyze_finance(catering_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:

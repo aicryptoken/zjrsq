@@ -10,7 +10,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('db/ideapod_space.log')
+        logging.FileHandler('db/ideapod.log')
     ]
 )
 
@@ -400,7 +400,7 @@ def analyze_space(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
             results[f'各区{metric}_bar'] = pivot_df.reset_index().rename_axis(None, axis=1)
         
         except Exception as e:
-            logging.error(f"Error in '{metric}' calculation: {str(e)}")
+            logging.error(f"[Space] Error in '{metric}' calculation: {str(e)}")
             # 如果出错，创建一个空的DataFrame作为结果
             results[f'各区{metric}_bar'] = pd.DataFrame(columns=['订单周'])
 
@@ -480,7 +480,7 @@ def analyze_space(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
             results['周度日内使用率_bar'] = pd.DataFrame(columns=['订单周'])
     
     except Exception as e:
-        logging.error(f"Error in hourly utilization calculation: {str(e)}")
+        logging.error(f"[Space] Error in hourly utilization calculation: {str(e)}")
         results['周度日内使用率_bar'] = pd.DataFrame(columns=['订单周'])
 
     # 周内使用率_bar (按星期几分析)
@@ -555,7 +555,7 @@ def analyze_space(space_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
             results['周内使用率_bar'] = empty_df
     
     except Exception as e:
-        logging.error(f"Error in weekday utilization calculation: {str(e)}")
+        logging.error(f"[Space] Error in weekday utilization calculation: {str(e)}")
         results['周内使用率_bar'] = pd.DataFrame(columns=['月份'] + ['周一', '周二', '周三', '周四', '周五', '周六', '周日'])
 
     return results

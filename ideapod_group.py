@@ -10,7 +10,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('db/ideapod_group.log')
+        logging.FileHandler('db/ideapod.log')
     ]
 )
 
@@ -26,7 +26,7 @@ def preprocess_datetime(df: pd.DataFrame) -> pd.DataFrame:
                 try:
                     df[col] = pd.to_datetime(df[col], errors='coerce')
                 except Exception as e:
-                    logging.error(f"转换 {col} 列时出错：{e}")
+                    logging.error(f"[Group] 转换 {col} 列时出错：{e}")
     return df
 
 def convert_df_to_dict(data):
@@ -57,7 +57,7 @@ def analyze_finance(space_df: pd.DataFrame, catering_df: pd.DataFrame) -> dict:
     original_len = len(catering_df)
     catering_df = catering_df[~catering_df['商品'].str.contains('押金|尾款', na=False)]
     filtered_count = original_len - len(catering_df)
-    logging.info(f"已过滤掉 {filtered_count} 条押金和尾款数据")
+    logging.info(f"[Group] 已过滤掉 {filtered_count} 条押金和尾款数据")
     
     def categorize_incomes(row):
         payment_method = row['支付方式2']  # 已经是映射后的字符串
@@ -115,11 +115,11 @@ def analyze_finance(space_df: pd.DataFrame, catering_df: pd.DataFrame) -> dict:
         ).drop('日期', axis=1).fillna(0)
         
     except FileNotFoundError:
-        logging.warning("shuyu_data.csv not found. Proceeding without external data.")
+        logging.warning("[Group] shuyu_data.csv not found. Proceeding without external data.")
         daily_data['餐饮收入_智能货柜'] = 0
         daily_data['餐饮收入_最福利'] = 0
     except KeyError as e:
-        logging.error(f"Error: {e}. Check if '餐饮收入_智能货柜' and '餐饮收入_最福利' exist in shuyu_data.csv.")
+        logging.error(f"[Group] Error: {e}. Check if '餐饮收入_智能货柜' and '餐饮收入_最福利' exist in shuyu_data.csv.")
         daily_data['餐饮收入_智能货柜'] = 0
         daily_data['餐饮收入_最福利'] = 0
 
@@ -263,8 +263,8 @@ def analyze(conn):
         return processed_results
 
     except sqlite3.Error as e:
-        logging.error(f"Database error: {e}")
+        logging.error(f"[Group] Database error: {e}")
         return {'error': f"Database error: {e}"}
     except Exception as e:
-        logging.error(f"An error occurred: {e}")
+        logging.error(f"[Group] An error occurred: {e}")
         return {'error': f"An error occurred: {e}"}
